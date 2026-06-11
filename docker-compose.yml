@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  postgres:
+    image: postgres:15
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: deliverydb
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+
+  order-service:
+    build: ./order-service
+    ports:
+      - "8080:8080"
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      KAFKA_BROKER: kafka:9092
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin123
+
+  courier-service:
+    build: ./courier-service
+    ports:
+      - "8081:8081"
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      KAFKA_BROKER: kafka:9092
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin123
+
+  tracking-service:
+    build: ./tracking-service
+    ports:
+      - "8082:8082"
+    depends_on:
+      - kafka
+      - postgres
+    environment:
+      KAFKA_BROKER: kafka:9092
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin123
+
+  notification-service:
+    build: ./notification-service
+    ports:
+      - "8083:8080"
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BROKER: kafka:9092
