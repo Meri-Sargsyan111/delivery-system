@@ -1,4 +1,4 @@
-package com.example.orderservice.odel;
+package com.example.orderservice.ordel;
 
     public enum OrderStatus {
         CREATED,

@@ -1,4 +1,4 @@
-package com.example.trackingservice;
+package com.example.trackingservice.repository;
 
 import com.example.trackingservice.entity.TrackingEvent;
 import org.springframework.data.jpa.repository.JpaRepository;

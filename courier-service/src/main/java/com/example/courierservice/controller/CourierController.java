@@ -1,7 +1,7 @@
 package com.example.courierservice.controller;
 
-import com.example.courierservice.CourierUpdate;
-import com.example.courierservice.CourierUpdateRepository;
+import com.example.courierservice.entity.CourierUpdate;
+import com.example.courierservice.repository.CourierUpdateRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.bind.annotation.*;

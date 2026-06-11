@@ -1,6 +1,6 @@
 package com.example.orderservice.repository;
 
-import com.example.orderservice.OrderStatus;
+import com.example.orderservice.ordel.OrderStatus;
 import com.example.orderservice.entity.DeliveryOrder;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;

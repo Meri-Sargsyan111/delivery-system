@@ -1,4 +1,4 @@
-package com.example.trackingservice;
+package com.example.trackingservice.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;

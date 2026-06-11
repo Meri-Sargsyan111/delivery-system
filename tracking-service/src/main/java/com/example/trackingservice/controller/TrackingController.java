@@ -1,5 +1,7 @@
-package com.example.trackingservice;
+package com.example.trackingservice.controller;
 
+import com.example.trackingservice.entity.TrackingEvent;
+import com.example.trackingservice.repository.TrackingEventRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 

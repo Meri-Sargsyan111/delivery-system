@@ -1,7 +1,7 @@
 package com.example.trackingservice.consumer;
 
-import com.example.trackingservice.TrackingEvent;
-import com.example.trackingservice.TrackingEventRepository;
+import com.example.trackingservice.entity.TrackingEvent;
+import com.example.trackingservice.repository.TrackingEventRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
