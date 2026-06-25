@@ -1,9 +1,9 @@
 package com.example.courierservice.controller;
 
-import com.example.courierservice.entity.CourierUpdate;
-import com.example.courierservice.repository.CourierUpdateRepository;
+import com.example.courierservice.dto.CourierLocation;
+import com.example.courierservice.service.CourierService;
+import com.example.courierservice.service.LocationService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -12,30 +12,21 @@ import org.springframework.web.bind.annotation.*;
 @RequiredArgsConstructor
 public class CourierController {
 
-    private final CourierUpdateRepository courierUpdateRepository;
-    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final CourierService courierService;
+    private final LocationService locationService;
 
-    @GetMapping("/test")
-    public String test() {
-        return "NVARD TEST 123";
+    @PutMapping("/start/{orderId}")
+    public String startDelivery(@PathVariable Long orderId) {
+        return courierService.startDelivery(orderId);
     }
 
     @PutMapping("/deliver/{orderId}")
     public String markAsDelivered(@PathVariable Long orderId) {
+        return courierService.markAsDelivered(orderId);
+    }
 
-        CourierUpdate update = new CourierUpdate();
-
-        update.setOrderId(orderId);
-        update.setCourierName("System");
-        update.setStatus("DELIVERED");
-
-        courierUpdateRepository.save(update);
-
-        String message =
-                orderId + ":System:DELIVERED";
-
-        kafkaTemplate.send("delivery-updates", message);
-
-        return "OK";
+    @PostMapping("/location")
+    public void sendLocation(@RequestBody CourierLocation location) {
+        locationService.sendLocation(location);
     }
 }

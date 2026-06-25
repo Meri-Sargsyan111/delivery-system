@@ -5,9 +5,10 @@ import com.example.trackingservice.repository.TrackingEventRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
-
+import lombok.extern.slf4j.Slf4j;
 import java.time.LocalDateTime;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TrackingConsumer {
@@ -27,6 +28,6 @@ public class TrackingConsumer {
 
         trackingEventRepository.save(event);
 
-        System.out.println("📍 Tracking saved: " + message);
+        log.info("Tracking saved: {}", message);
     }
 }

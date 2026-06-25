@@ -2,9 +2,11 @@ package com.example.notificationservice.consumer;
 
 import com.example.notificationservice.service.NotificationService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class NotificationConsumer {
@@ -13,12 +15,10 @@ public class NotificationConsumer {
 
     @KafkaListener(topics = "new-orders", groupId = "notification-group")
     public void listenNewOrders(String message) {
-        String[] parts = message.split(":");
 
-        System.out.println("   A new order has been received!");
-        System.out.println("   Order ID: " + parts[0]);
-        System.out.println("   Customer: " + parts[1]);
-        System.out.println("   Address: " + parts[2]);
+        log.info("Received new order message: {}", message);
+
+        String[] parts = message.split(":");
 
         String notification =
                 "New Order -> ID: " + parts[0]
@@ -30,12 +30,10 @@ public class NotificationConsumer {
 
     @KafkaListener(topics = "delivery-updates", groupId = "notification-group")
     public void listenDeliveryUpdates(String message) {
-        String[] parts = message.split(":");
 
-        System.out.println("   Delivery status has changed!");
-        System.out.println("   Order ID: " + parts[0]);
-        System.out.println("   Courier: " + parts[1]);
-        System.out.println("   Status: " + parts[2]);
+        log.info("Received delivery update: {}", message);
+
+        String[] parts = message.split(":");
 
         String notification =
                 "Delivery Update -> Order: " + parts[0]
