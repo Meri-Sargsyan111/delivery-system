@@ -7,9 +7,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/courier")
-@CrossOrigin(origins = "http://localhost:4200")
 @RequiredArgsConstructor
+@RequestMapping("/courier")
 public class CourierController {
 
     private final CourierService courierService;

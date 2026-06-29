@@ -1,41 +1,32 @@
 package com.example.courierservice.service;
 
-import com.example.courierservice.entity.CourierUpdate;
-import com.example.courierservice.repository.CourierUpdateRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Service;
+/**
+ * Service interface for managing courier delivery operations.
+ *
+ * <p>Provides methods to control the lifecycle of a delivery, from initiating
+ * the pickup to marking the order as successfully delivered to the customer.
+ */
+public interface CourierService {
 
-@Service
-@RequiredArgsConstructor
-public class CourierService {
+    /**
+     * Initiates the delivery process for the specified order.
+     *
+     * <p>Assigns the order to an available courier and transitions its status
+     * to indicate that delivery is in progress.
+     *
+     * @param orderId the unique identifier of the order to be delivered
+     * @return a confirmation message describing the result of the operation
+     */
+    String startDelivery(Long orderId);
 
-    private final CourierUpdateRepository courierUpdateRepository;
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final LocationSimulationService locationSimulationService;
-
-    public String startDelivery(Long orderId) {
-
-        locationSimulationService.simulateTrip(orderId);
-
-        return "Delivery started";
-    }
-
-    public String markAsDelivered(Long orderId) {
-
-        CourierUpdate update = new CourierUpdate();
-
-        update.setOrderId(orderId);
-        update.setCourierName("System");
-        update.setStatus("DELIVERED");
-
-        courierUpdateRepository.save(update);
-
-        String message =
-                orderId + ":System:DELIVERED";
-
-        kafkaTemplate.send("delivery-updates", message);
-
-        return "Delivery completed";
-    }
+    /**
+     * Marks the specified order as successfully delivered.
+     *
+     * <p>Updates the order status to delivered and triggers any downstream
+     * notifications or post-delivery workflows.
+     *
+     * @param orderId the unique identifier of the order that was delivered
+     * @return a confirmation message describing the result of the operation
+     */
+    String markAsDelivered(Long orderId);
 }

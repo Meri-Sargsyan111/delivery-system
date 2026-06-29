@@ -3,6 +3,9 @@ package com.example.trackingservice.controller;
 import com.example.trackingservice.entity.TrackingEvent;
 import com.example.trackingservice.service.TrackingService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -10,7 +13,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/tracking")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:4200")
 public class TrackingController {
 
     private final TrackingService trackingService;
@@ -21,7 +23,7 @@ public class TrackingController {
     }
 
     @GetMapping
-    public List<TrackingEvent> getAllEvents() {
-        return trackingService.getAllEvents();
+    public Page<TrackingEvent> getAllEvents(@PageableDefault(size = 20) Pageable pageable) {
+        return trackingService.getAllEvents(pageable);
     }
 }

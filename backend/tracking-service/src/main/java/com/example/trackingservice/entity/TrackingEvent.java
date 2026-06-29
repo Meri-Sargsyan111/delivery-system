@@ -7,11 +7,11 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
-@Entity
-@Table(name = "tracking_events")
 @Data
+@Entity
 @NoArgsConstructor
 @AllArgsConstructor
+@Table(name = "tracking_events")
 public class TrackingEvent {
 
     @Id

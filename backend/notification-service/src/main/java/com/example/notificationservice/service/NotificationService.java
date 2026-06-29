@@ -1,53 +1,30 @@
 package com.example.notificationservice.service;
 
-import lombok.RequiredArgsConstructor;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.stereotype.Component;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
-import java.util.ArrayList;
-import java.util.List;
+/**
+ * Service interface for managing and dispatching notifications.
+ *
+ * <p>Provides operations to persist a notification, send it via email,
+ * broadcast it over WebSocket, and retrieve the notification history.
+ */
+public interface NotificationService {
 
-@Component
-@RequiredArgsConstructor
-public class NotificationService {
+    /**
+     * Persists the notification, sends it as an email, and broadcasts it
+     * to all WebSocket subscribers on {@code /topic/notifications}.
+     *
+     * @param message the notification text to be delivered
+     */
+    void add(String message);
 
-    private final List<String> notifications = new ArrayList<>();
-
-    private final JavaMailSender mailSender;
-    private final SimpMessagingTemplate messagingTemplate;
-
-    public void add(String notification) {
-
-        System.out.println("WEBSOCKET SEND: " + notification);
-
-        notifications.add(notification);
-
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo("smeri2455@gmail.com");
-        message.setSubject("Delivery System Notification");
-        message.setText(notification);
-
-        mailSender.send(message);
-
-        messagingTemplate.convertAndSend("/topic/notifications", notification);
-    }
-
-    public List<String> getAll() {
-        return notifications;
-    }
-
-    public List<String> getNotifications(int page, int size) {
-
-        int start = page * size;
-
-        if (start >= notifications.size()) {
-            return List.of();
-        }
-
-        int end = Math.min(start + size, notifications.size());
-
-        return notifications.subList(start, end);
-    }
+    /**
+     * Returns a paginated list of all stored notification messages,
+     * ordered by persistence time (most recent last).
+     *
+     * @param pageable pagination and sorting parameters
+     * @return a {@link Page} of notification message strings
+     */
+    Page<String> getNotifications(Pageable pageable);
 }
