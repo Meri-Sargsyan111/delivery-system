@@ -4,17 +4,20 @@ import com.example.orderservice.dto.CreateOrderRequest;
 import com.example.orderservice.dto.OrderResponse;
 import com.example.orderservice.entity.DeliveryOrder;
 import com.example.orderservice.event.OrderCreatedEvent;
+import com.example.orderservice.exception.EntityNotFoundException;
 import com.example.orderservice.mapper.OrderMapper;
 import com.example.orderservice.order.OrderStatus;
 import com.example.orderservice.repository.DeliveryOrderRepository;
 import com.example.orderservice.service.OrderService;
 import com.example.orderservice.specification.OrderSpecification;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OrderServiceImpl implements OrderService {
@@ -37,10 +40,11 @@ public class OrderServiceImpl implements OrderService {
                             order.getCustomerName(),
                             order.getToAddress()));
 
+            log.info("Order {} created and published to Kafka", order.getId());
             return new OrderResponse(order.getId(), "Order created");
 
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Failed to create order", e);
             throw e;
         }
     }
@@ -53,7 +57,10 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public DeliveryOrder getOrderById(Long id) {
         return orderRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Order not found"));
+                .orElseThrow(() -> {
+                    log.warn("Order not found with id: {}", id);
+                    return new EntityNotFoundException("Order not found with id: " + id);
+                });
     }
 
     @Override
@@ -66,6 +73,7 @@ public class OrderServiceImpl implements OrderService {
         DeliveryOrder order = getOrderById(id);
         order.setStatus(OrderStatus.ASSIGNED);
         orderRepository.save(order);
+        log.info("Order {} status changed to ASSIGNED", id);
         return new OrderResponse(order.getId(), "Order assigned");
     }
 
@@ -74,6 +82,7 @@ public class OrderServiceImpl implements OrderService {
         DeliveryOrder order = getOrderById(id);
         order.setStatus(OrderStatus.DELIVERED);
         orderRepository.save(order);
+        log.info("Order {} status changed to DELIVERED", id);
         return new OrderResponse(order.getId(), "Order delivered");
     }
 
@@ -82,6 +91,7 @@ public class OrderServiceImpl implements OrderService {
         DeliveryOrder order = getOrderById(id);
         order.setStatus(OrderStatus.CANCELLED);
         orderRepository.save(order);
+        log.info("Order {} status changed to CANCELLED", id);
         return new OrderResponse(order.getId(), "Order cancelled");
     }
 }

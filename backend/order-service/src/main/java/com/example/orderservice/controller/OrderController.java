@@ -7,6 +7,7 @@ import com.example.orderservice.order.OrderStatus;
 import com.example.orderservice.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/orders")
@@ -28,6 +30,7 @@ public class OrderController {
 
     @PostMapping
     public OrderResponse createOrder(@Valid @RequestBody CreateOrderRequest request) {
+        log.info("POST /orders - received request to create new order");
         return orderService.createOrder(request);
     }
 
@@ -38,6 +41,7 @@ public class OrderController {
 
     @GetMapping("/{id}")
     public DeliveryOrder getOrderById(@PathVariable Long id) {
+        log.info("GET /orders/{}", id);
         return orderService.getOrderById(id);
     }
 
@@ -47,23 +51,26 @@ public class OrderController {
             @RequestParam(required = false) OrderStatus status,
             @PageableDefault(size = 20) Pageable pageable) {
 
+        log.info("GET /orders/search - customerName provided: {}, status: {}", customerName != null, status);
         return orderService.searchOrders(customerName, status, pageable);
     }
 
     @PutMapping("/{id}/assign")
     public OrderResponse assignOrder(@PathVariable Long id) {
+        log.info("PUT /orders/{}/assign", id);
         return orderService.assignOrder(id);
     }
 
     @PutMapping("/{id}/deliver")
     public OrderResponse deliverOrder(@PathVariable Long id) {
+        log.info("PUT /orders/{}/deliver", id);
         return orderService.deliverOrder(id);
     }
 
     @PutMapping("/{id}/cancel")
     public OrderResponse cancelOrder(@PathVariable Long id) {
+        log.info("PUT /orders/{}/cancel", id);
         return orderService.cancelOrder(id);
     }
-
 
 }
