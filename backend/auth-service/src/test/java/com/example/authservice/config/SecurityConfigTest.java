@@ -1,12 +1,23 @@
 package com.example.authservice.config;
 
+import com.example.authservice.controller.AuthController;
+import com.example.authservice.controller.JwkSetController;
+import com.example.authservice.security.JwtService;
+import com.example.authservice.security.RefreshCookieFactory;
+import com.example.authservice.security.RefreshTokenService;
+import com.example.authservice.service.AuthService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseCookie;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -19,11 +30,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * controller/service - so a request reaching the controller here (even one that then fails
  * for a missing/invalid cookie) proves this layer let it through correctly.
  */
-@SpringBootTest
-@AutoConfigureMockMvc
+@WebMvcTest({AuthController.class, JwkSetController.class})
+@Import({SecurityConfig.class, CorsConfig.class})
 class SecurityConfigTest {
 
     @Autowired private MockMvc mockMvc;
+
+    @MockBean private AuthService authService;
+    @MockBean private RefreshTokenService refreshTokenService;
+    @MockBean private RefreshCookieFactory refreshCookieFactory;
+    @MockBean private JwtService jwtService;
+    @MockBean private JwtDecoder jwtDecoder;
+
+    @BeforeEach
+    void setUp() {
+        when(refreshCookieFactory.clear()).thenReturn(ResponseCookie.from("refresh_token", "").build());
+    }
 
     @Test
     void getMe_withoutToken_returns401() throws Exception {
