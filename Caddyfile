@@ -1,6 +1,17 @@
-# Plain-HTTP reverse proxy to api-gateway, for deploying by bare IP with no domain yet.
-# Once a domain is pointed at the server, replace ":80" with the domain name so Caddy
-# provisions Let's Encrypt TLS automatically, then re-run `docker compose up -d caddy`.
+# Plain-HTTP reverse proxy, for deploying by bare IP with no domain yet. Once a domain is
+# pointed at the server, replace ":80" with the domain name so Caddy provisions Let's
+# Encrypt TLS automatically, then re-run `docker compose up -d caddy`.
+#
+# Known backend API/WebSocket path prefixes go to api-gateway (list mirrors
+# backend/api-gateway/src/main/resources/application.yml's route predicates exactly);
+# everything else (the Angular app shell, its JS/CSS bundles, and any of its client-side
+# routes) falls through to the frontend container, whose own nginx handles the SPA
+# fallback for deep-link refreshes.
 :80 {
-	reverse_proxy api-gateway:8080
+	handle /auth/* /orders/* /courier/* /tracking/* /notifications/* /chat/* /ws/* /ws-location/* /ws-chat/* {
+		reverse_proxy api-gateway:8080
+	}
+	handle {
+		reverse_proxy frontend:80
+	}
 }
