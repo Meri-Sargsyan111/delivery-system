@@ -8,7 +8,8 @@
 # routes) falls through to the frontend container, whose own nginx handles the SPA
 # fallback for deep-link refreshes.
 :80 {
-	handle /auth/* /orders/* /courier/* /tracking/* /notifications/* /chat/* /ws/* /ws-location/* /ws-chat/* {
+	@api path /auth/* /orders/* /courier/* /tracking/* /notifications/* /chat/* /ws/* /ws-location/* /ws-chat/*
+	handle @api {
 		reverse_proxy api-gateway:8080
 	}
 	handle {
