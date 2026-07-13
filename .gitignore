@@ -4,6 +4,15 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+### Secrets ###
+*.pem
+.env
+backend/auth-service/keys/
+
+### Uploaded user content ###
+backend/auth-service/uploads/
+/uploads/
+
 ### STS ###
 .apt_generated
 .classpath

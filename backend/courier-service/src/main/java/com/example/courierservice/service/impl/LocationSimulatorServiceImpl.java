@@ -8,6 +8,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -24,15 +27,34 @@ public class LocationSimulatorServiceImpl implements LocationSimulatorService {
         {40.1812, 44.5074}
     };
 
-    private int index = 0;
+    private final AtomicReference<Long> activeOrderId = new AtomicReference<>();
+    private final AtomicInteger index = new AtomicInteger(0);
+
+    @Override
+    public void startTracking(Long orderId) {
+        index.set(0);
+        activeOrderId.set(orderId);
+        log.info("Live tracking started for orderId={}", orderId);
+    }
+
+    @Override
+    public void stopTracking(Long orderId) {
+        if (activeOrderId.compareAndSet(orderId, null)) {
+            log.info("Live tracking stopped for orderId={}", orderId);
+        }
+    }
 
     @Override
     @Scheduled(fixedDelay = 3000)
     public void simulateMovement() {
-        double[] point = ROUTE[index % ROUTE.length];
-        CourierLocation location = new CourierLocation(1L, point[0], point[1]);
-        log.info("Simulating courier at [{}, {}]", point[0], point[1]);
+        Long orderId = activeOrderId.get();
+        if (orderId == null) {
+            return;
+        }
+
+        double[] point = ROUTE[index.getAndIncrement() % ROUTE.length];
+        CourierLocation location = new CourierLocation(orderId, point[0], point[1]);
+        log.info("Simulating courier at [{}, {}] for orderId={}", point[0], point[1], orderId);
         locationService.sendLocation(location);
-        index++;
     }
 }

@@ -3,8 +3,7 @@ package com.example.orderservice.order;
     public enum OrderStatus {
         CREATED,
         ASSIGNED,
-        PICKED_UP,
-        ON_THE_WAY,
+        IN_PROGRESS,
         DELIVERED,
         CANCELLED
     }

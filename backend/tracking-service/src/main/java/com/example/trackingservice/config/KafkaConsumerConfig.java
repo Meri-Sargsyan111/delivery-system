@@ -1,6 +1,7 @@
 package com.example.trackingservice.config;
 
 import com.example.trackingservice.event.DeliveryUpdateEvent;
+import com.example.trackingservice.event.OrderCreatedEvent;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,6 +31,26 @@ public class KafkaConsumerConfig {
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
         ConcurrentKafkaListenerContainerFactory<String, DeliveryUpdateEvent> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(props, new StringDeserializer(), deserializer));
+        return factory;
+    }
+
+    /**
+     * New consumption of new-orders, added solely to learn each order's owning
+     * customerUserId for the local OrderOwnership authorization projection.
+     */
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, OrderCreatedEvent> orderCreatedKafkaListenerContainerFactory() {
+        JsonDeserializer<OrderCreatedEvent> deserializer = new JsonDeserializer<>(OrderCreatedEvent.class);
+        deserializer.addTrustedPackages("*");
+        deserializer.setUseTypeHeaders(false);
+
+        Map<String, Object> props = new HashMap<>();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+
+        ConcurrentKafkaListenerContainerFactory<String, OrderCreatedEvent> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(props, new StringDeserializer(), deserializer));
         return factory;

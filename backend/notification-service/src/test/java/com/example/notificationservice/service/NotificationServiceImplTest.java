@@ -2,6 +2,7 @@ package com.example.notificationservice.service;
 
 import com.example.notificationservice.entity.Notification;
 import com.example.notificationservice.repository.NotificationRepository;
+import com.example.notificationservice.security.CurrentUser;
 import com.example.notificationservice.service.impl.NotificationServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,6 +11,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -18,22 +21,32 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.test.util.ReflectionTestUtils;
+
 import java.util.List;
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class NotificationServiceImplTest {
+
+    private static final UUID ADMIN_ID = UUID.randomUUID();
+    private static final UUID RECIPIENT_USER_ID = UUID.randomUUID();
+    private static final UUID OTHER_USER_ID = UUID.randomUUID();
 
     @Mock private NotificationRepository notificationRepository;
     @Mock private JavaMailSender mailSender;
     @Mock private SimpMessagingTemplate messagingTemplate;
+    @Mock private CurrentUser currentUser;
 
     @InjectMocks private NotificationServiceImpl notificationService;
 
@@ -48,21 +61,35 @@ class NotificationServiceImplTest {
     void injectValueFields() {
         ReflectionTestUtils.setField(notificationService, "mailRecipient", RECIPIENT);
         ReflectionTestUtils.setField(notificationService, "mailSubject", SUBJECT);
+
+        lenient().when(currentUser.isAdmin()).thenReturn(true);
+        lenient().when(currentUser.getUserId()).thenReturn(ADMIN_ID);
     }
 
     @Test
-    void add_persistsNotificationEntityWithCorrectMessage() {
-        notificationService.add("Order dispatched");
+    void add_persistsNotificationEntityWithCorrectMessageAndRecipient() {
+        notificationService.add("Order dispatched", RECIPIENT_USER_ID);
 
         ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
         verify(notificationRepository).save(captor.capture());
 
         assertThat(captor.getValue().getMessage()).isEqualTo("Order dispatched");
+        assertThat(captor.getValue().getRecipientUserId()).isEqualTo(RECIPIENT_USER_ID);
+    }
+
+    @Test
+    void add_withNullRecipient_persistsWithNullRecipientUserId() {
+        notificationService.add("Order dispatched", null);
+
+        ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
+        verify(notificationRepository).save(captor.capture());
+
+        assertThat(captor.getValue().getRecipientUserId()).isNull();
     }
 
     @Test
     void add_sendsEmailToConfiguredRecipientWithCorrectSubjectAndBody() {
-        notificationService.add("Order dispatched");
+        notificationService.add("Order dispatched", RECIPIENT_USER_ID);
 
         ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
         verify(mailSender).send(captor.capture());
@@ -75,9 +102,24 @@ class NotificationServiceImplTest {
 
     @Test
     void add_broadcastsMessageToWebSocketNotificationsTopic() {
-        notificationService.add("Order dispatched");
+        notificationService.add("Order dispatched", RECIPIENT_USER_ID);
 
         verify(messagingTemplate).convertAndSend("/topic/notifications", "Order dispatched");
+    }
+
+    @Test
+    void add_whenRecipientKnown_alsoSendsToUserSpecificQueue() {
+        notificationService.add("Order dispatched", RECIPIENT_USER_ID);
+
+        verify(messagingTemplate).convertAndSendToUser(
+                RECIPIENT_USER_ID.toString(), "/queue/notifications", "Order dispatched");
+    }
+
+    @Test
+    void add_whenRecipientUnknown_skipsUserSpecificSend() {
+        notificationService.add("Order dispatched", null);
+
+        verify(messagingTemplate, never()).convertAndSendToUser(any(), any(), any());
     }
 
     @Test
@@ -85,7 +127,7 @@ class NotificationServiceImplTest {
         when(notificationRepository.save(any(Notification.class)))
                 .thenThrow(new RuntimeException("DB unavailable"));
 
-        assertThatThrownBy(() -> notificationService.add("Order dispatched"))
+        assertThatThrownBy(() -> notificationService.add("Order dispatched", RECIPIENT_USER_ID))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("DB unavailable");
 
@@ -94,16 +136,14 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    void add_whenMailSenderThrows_propagatesExceptionAfterPersist() {
+    void add_whenMailSenderThrows_swallowsExceptionAndStillBroadcastsToWebSocket() {
         doThrow(new RuntimeException("SMTP unavailable"))
                 .when(mailSender).send(any(SimpleMailMessage.class));
 
-        assertThatThrownBy(() -> notificationService.add("Order dispatched"))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessage("SMTP unavailable");
+        notificationService.add("Order dispatched", RECIPIENT_USER_ID);
 
         verify(notificationRepository).save(any(Notification.class));
-        verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
+        verify(messagingTemplate).convertAndSend("/topic/notifications", "Order dispatched");
     }
 
     @Test
@@ -111,7 +151,7 @@ class NotificationServiceImplTest {
         doThrow(new RuntimeException("WebSocket unavailable"))
                 .when(messagingTemplate).convertAndSend(eq("/topic/notifications"), any(Object.class));
 
-        assertThatThrownBy(() -> notificationService.add("Order dispatched"))
+        assertThatThrownBy(() -> notificationService.add("Order dispatched", RECIPIENT_USER_ID))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("WebSocket unavailable");
 
@@ -120,11 +160,11 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    void getNotifications_mapsNotificationEntitiesToMessageStrings() {
+    void getNotifications_asAdmin_returnsAllNotifications() {
         Pageable pageable = PageRequest.of(0, 10);
         Page<Notification> stored = new PageImpl<>(List.of(
-                new Notification("First message"),
-                new Notification("Second message")
+                new Notification("First message", RECIPIENT_USER_ID),
+                new Notification("Second message", OTHER_USER_ID)
         ));
         when(notificationRepository.findAll(pageable)).thenReturn(stored);
 
@@ -132,6 +172,20 @@ class NotificationServiceImplTest {
 
         assertThat(result.getContent()).containsExactly("First message", "Second message");
         assertThat(result.getTotalElements()).isEqualTo(2);
+    }
+
+    @Test
+    void getNotifications_asNonAdmin_scopesQueryToOwnRecipientUserId() {
+        lenient().when(currentUser.isAdmin()).thenReturn(false);
+        lenient().when(currentUser.getUserId()).thenReturn(RECIPIENT_USER_ID);
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<Notification> stored = new PageImpl<>(List.of(new Notification("Mine", RECIPIENT_USER_ID)));
+        when(notificationRepository.findByRecipientUserId(RECIPIENT_USER_ID, pageable)).thenReturn(stored);
+
+        Page<String> result = notificationService.getNotifications(pageable);
+
+        assertThat(result.getContent()).containsExactly("Mine");
+        verify(notificationRepository, never()).findAll(pageable);
     }
 
     @Test

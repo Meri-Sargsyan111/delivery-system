@@ -3,6 +3,7 @@ package com.example.courierservice.exception;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -14,6 +15,19 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDeniedException(
+            AccessDeniedException ex, HttpServletRequest request) {
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.FORBIDDEN.value(),
+                HttpStatus.FORBIDDEN.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        ));
+    }
+
     @ExceptionHandler(EntityNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleEntityNotFoundException(
             EntityNotFoundException ex, HttpServletRequest request) {
@@ -22,6 +36,45 @@ public class GlobalExceptionHandler {
                 LocalDateTime.now(),
                 HttpStatus.NOT_FOUND.value(),
                 HttpStatus.NOT_FOUND.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        ));
+    }
+
+    @ExceptionHandler(CourierNotAvailableException.class)
+    public ResponseEntity<ErrorResponse> handleCourierNotAvailableException(
+            CourierNotAvailableException ex, HttpServletRequest request) {
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.CONFLICT.value(),
+                HttpStatus.CONFLICT.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        ));
+    }
+
+    @ExceptionHandler(InvalidOrderStateException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidOrderStateException(
+            InvalidOrderStateException ex, HttpServletRequest request) {
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.CONFLICT.value(),
+                HttpStatus.CONFLICT.getReasonPhrase(),
+                ex.getMessage(),
+                request.getRequestURI()
+        ));
+    }
+
+    @ExceptionHandler(OrderAlreadyRatedException.class)
+    public ResponseEntity<ErrorResponse> handleOrderAlreadyRatedException(
+            OrderAlreadyRatedException ex, HttpServletRequest request) {
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.CONFLICT.value(),
+                HttpStatus.CONFLICT.getReasonPhrase(),
                 ex.getMessage(),
                 request.getRequestURI()
         ));

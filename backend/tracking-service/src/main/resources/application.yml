@@ -1,6 +1,11 @@
 spring:
   application:
     name: tracking-service
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${AUTH_SERVICE_URL:http://localhost:8085}/auth/.well-known/jwks.json
   kafka:
     bootstrap-servers: ${KAFKA_BROKER:localhost:9092}
     consumer:
@@ -8,9 +13,9 @@ spring:
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
   datasource:
-    url: jdbc:postgresql://localhost:5432/deliverydb
-    username: postgres
-    password: postgres
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/deliverydb}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:

@@ -1,8 +1,9 @@
 package com.example.orderservice.service;
 
 import com.example.orderservice.dto.CreateOrderRequest;
+import com.example.orderservice.dto.DeliveryOrderResponse;
 import com.example.orderservice.dto.OrderResponse;
-import com.example.orderservice.entity.DeliveryOrder;
+import com.example.orderservice.dto.OrderStatusView;
 import com.example.orderservice.order.OrderStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -28,18 +29,29 @@ public interface OrderService {
      * Returns a paginated list of all delivery orders.
      *
      * @param pageable pagination and sorting parameters
-     * @return a {@link Page} of {@link DeliveryOrder} entities
+     * @return a {@link Page} of {@link DeliveryOrderResponse}
      */
-    Page<DeliveryOrder> getOrders(Pageable pageable);
+    Page<DeliveryOrderResponse> getOrders(Pageable pageable);
 
     /**
      * Retrieves a single order by its ID.
      *
      * @param id the unique identifier of the order
-     * @return the matching {@link DeliveryOrder}
+     * @return the matching {@link DeliveryOrderResponse}
      * @throws RuntimeException if no order with the given ID exists
      */
-    DeliveryOrder getOrderById(Long id);
+    DeliveryOrderResponse getOrderById(Long id);
+
+    /**
+     * Retrieves the status projection for a single order by its ID with no
+     * ownership/role check. Used only by the public GET /orders/{id}/status internal
+     * projection endpoint - deliberately excludes customerName/addresses/customerPhone,
+     * see {@link OrderStatusView}.
+     *
+     * @param id the unique identifier of the order
+     * @return the {@link OrderStatusView} projection for that order
+     */
+    OrderStatusView getOrderByIdInternal(Long id);
 
     /**
      * Returns a paginated list of orders filtered by optional customer name and status.
@@ -47,17 +59,29 @@ public interface OrderService {
      * @param customerName partial or full customer name to filter by (may be {@code null})
      * @param status       order status to filter by (may be {@code null})
      * @param pageable     pagination and sorting parameters
-     * @return a {@link Page} of matching {@link DeliveryOrder} entities
+     * @return a {@link Page} of matching {@link DeliveryOrderResponse}
      */
-    Page<DeliveryOrder> searchOrders(String customerName, OrderStatus status, Pageable pageable);
+    Page<DeliveryOrderResponse> searchOrders(String customerName, OrderStatus status, Pageable pageable);
 
     /**
-     * Transitions the order to {@code ASSIGNED} status and persists the change.
+     * Reserves the given courier (via courier-service) and, on success, transitions
+     * the order to {@code ASSIGNED} status and persists the assigned courier's ID.
      *
      * @param id the unique identifier of the order to assign
+     * @param courierId the unique identifier of the courier to assign
      * @return an {@link OrderResponse} confirming the assignment
+     * @throws com.example.orderservice.exception.InvalidOrderStateException if the order is not {@code CREATED}
+     * @throws com.example.orderservice.exception.CourierAssignmentException if courier-service rejects the reservation
      */
-    OrderResponse assignOrder(Long id);
+    OrderResponse assignOrder(Long id, Long courierId);
+
+    /**
+     * Transitions the order to {@code IN_PROGRESS} status and persists the change.
+     * Called when courier-service reports that delivery has started.
+     *
+     * @param id the unique identifier of the order
+     */
+    void startProgress(Long id);
 
     /**
      * Transitions the order to {@code DELIVERED} status and persists the change.

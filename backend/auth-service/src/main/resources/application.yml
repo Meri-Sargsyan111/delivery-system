@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: auth-service
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKER:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/authdb}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 5MB
+
+server:
+  port: 8085
+
+app:
+  avatar:
+    upload-dir: ${AVATAR_UPLOAD_DIR:uploads/avatars}
+
+jwt:
+  issuer: http://auth-service
+  access-token-ttl-seconds: 3600
+  refresh-token-ttl-seconds: 604800
+  private-key-location:
+  public-key-location:
+
+auth:
+  refresh-cookie:
+    name: refresh_token
+    secure: false
+    same-site: Lax
+
+admin:
+  bootstrap:
+    email: ${ADMIN_EMAIL:admin@delivery.com}
+    password: ${ADMIN_PASSWORD:Admin@12345}
+    first-name: ${ADMIN_FIRST_NAME:System}
+    last-name: ${ADMIN_LAST_NAME:Admin}
+    phone-number: ${ADMIN_PHONE:+10000000000}

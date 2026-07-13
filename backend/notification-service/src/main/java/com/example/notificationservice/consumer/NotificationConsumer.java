@@ -25,7 +25,7 @@ public class NotificationConsumer {
                 + ", Customer: " + event.getCustomerName()
                 + ", Address: " + event.getToAddress();
 
-        notificationStore.add(notification);
+        notificationStore.add(notification, event.getCustomerUserId());
     }
 
     @KafkaListener(topics = "delivery-updates", groupId = "notification-group",
@@ -38,6 +38,6 @@ public class NotificationConsumer {
                 + ", Courier: " + event.getCourierName()
                 + ", Status: " + event.getStatus();
 
-        notificationStore.add(notification);
+        notificationStore.add(notification, event.getCourierUserId());
     }
 }

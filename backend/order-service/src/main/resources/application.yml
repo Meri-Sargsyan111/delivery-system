@@ -1,19 +1,28 @@
 spring:
   application:
     name: order-service
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${AUTH_SERVICE_URL:http://localhost:8085}/auth/.well-known/jwks.json
   datasource:
-    url: jdbc:postgresql://localhost:5432/deliverydb
-    username: postgres
-    password: postgres
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/deliverydb}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
   jpa:
     hibernate:
       ddl-auto: update
     show-sql: true
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${KAFKA_BROKER:localhost:9092}
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
 
 server:
   port: 8081
+
+services:
+  courier-service:
+    base-url: ${COURIER_SERVICE_URL:http://localhost:8082}

@@ -1,80 +1,209 @@
-version: '3.8'
-
+# Two ways to run this project - do not mix them (see README note below):
+#
+# MODE B (default, `docker compose up -d`): native/IntelliJ-run Spring Boot services
+# + Angular dev server, with Docker providing ONLY Kafka as shared infrastructure.
+# This is the actively-used local development setup - all `application.yml` files
+# default to `localhost:9092` / `localhost:5432` for exactly this mode. Postgres itself
+# runs natively (not in Docker) in this mode, so it's deliberately NOT started by
+# default here - a Dockerized Postgres alongside a native one on the same port is
+# exactly the "duplicate instance" confusion this file used to cause.
+#
+# MODE A (opt-in, `docker compose --profile full-stack up -d --build`): the complete,
+# self-contained stack - every service plus its own dedicated Postgres, entirely inside
+# Docker's network. Useful for testing a real deployment, but must not run at the same
+# time as Mode B (identical host ports). See each service's application.yml for the
+# environment-variable overrides (AUTH_SERVICE_URL, SPRING_DATASOURCE_URL, KAFKA_BROKER,
+# etc.) that redirect it from localhost defaults to Docker service hostnames.
 services:
 
+  # Always-on infra for MODE B: the one piece of shared infrastructure that doesn't
+  # have a native-Windows equivalent already running (unlike Postgres - see above).
   kafka:
     image: confluentinc/cp-kafka:7.4.0
     ports:
-      - "9092:9092"
+      - "127.0.0.1:9092:9092"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      # Advertises localhost:9092 - correct for MODE B, where every client (native
+      # Spring Boot services, this host's own tooling) connects from outside Docker's
+      # network. This must change to kafka:9092 only if MODE A's containers are the
+      # ones talking to this same broker instead - the two modes need different values,
+      # which is exactly why they must not run simultaneously.
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qg
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Everything below is MODE A only - never started by a bare `docker compose up`.
 
   postgres:
     image: postgres:15
+    profiles: ["full-stack"]
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_DB: deliverydb
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth-service:
+    build: ./backend/auth-service
+    profiles: ["full-stack"]
+    ports:
+      - "127.0.0.1:8085:8085"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER: kafka:9092
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/authdb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
 
   order-service:
-    build: ./order-service
+    build: ./backend/order-service
+    profiles: ["full-stack"]
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8081:8081"
     depends_on:
-      - kafka
-      - postgres
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
     environment:
+      AUTH_SERVICE_URL: http://auth-service:8085
+      COURIER_SERVICE_URL: http://courier-service:8082
       KAFKA_BROKER: kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
 
   courier-service:
-    build: ./courier-service
+    build: ./backend/courier-service
+    profiles: ["full-stack"]
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8082:8082"
     depends_on:
-      - kafka
-      - postgres
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
     environment:
+      AUTH_SERVICE_URL: http://auth-service:8085
+      ORDER_SERVICE_URL: http://order-service:8081
       KAFKA_BROKER: kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
 
   tracking-service:
-    build: ./tracking-service
+    build: ./backend/tracking-service
+    profiles: ["full-stack"]
     ports:
-      - "8082:8082"
+      - "127.0.0.1:8083:8083"
     depends_on:
-      - kafka
-      - postgres
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
     environment:
+      AUTH_SERVICE_URL: http://auth-service:8085
       KAFKA_BROKER: kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
 
   notification-service:
-    build: ./notification-service
+    build: ./backend/notification-service
+    profiles: ["full-stack"]
     ports:
-      - "8083:8080"
+      - "127.0.0.1:8084:8084"
     depends_on:
-      - kafka
-      - postgres
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
     environment:
+      AUTH_SERVICE_URL: http://auth-service:8085
       KAFKA_BROKER: kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      # Real SMTP credentials are dev-machine-local secrets, never committed. Mail sending
+      # is best-effort (NotificationServiceImpl logs a warning and continues on failure -
+      # see backend/notification-service), so these placeholders let the container start
+      # and every other notification path (DB, WebSocket) work normally without real mail.
+      MAIL_USERNAME: noreply@example.com
+      MAIL_PASSWORD: placeholder
+
+  chat-service:
+    build: ./backend/chat-service
+    profiles: ["full-stack"]
+    ports:
+      - "127.0.0.1:8086:8086"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8085
+      KAFKA_BROKER: kafka:9092
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/chatdb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+
+  api-gateway:
+    build: ./backend/api-gateway
+    profiles: ["full-stack"]
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      auth-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+      courier-service:
+        condition: service_started
+      tracking-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+      chat-service:
+        condition: service_started
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8085
+      ORDER_SERVICE_URL: http://order-service:8081
+      COURIER_SERVICE_URL: http://courier-service:8082
+      TRACKING_SERVICE_URL: http://tracking-service:8083
+      NOTIFICATION_SERVICE_URL: http://notification-service:8084
+      CHAT_SERVICE_URL: http://chat-service:8086

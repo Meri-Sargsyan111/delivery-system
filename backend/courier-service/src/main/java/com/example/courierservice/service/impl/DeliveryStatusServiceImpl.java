@@ -26,7 +26,7 @@ public class DeliveryStatusServiceImpl implements DeliveryStatusService {
         update.setStatus("DELIVERED");
         courierUpdateRepository.save(update);
 
-        kafkaTemplate.send("delivery-updates", new DeliveryUpdateEvent(orderId, "System", "DELIVERED"));
+        kafkaTemplate.send("delivery-updates", new DeliveryUpdateEvent(orderId, "System", "DELIVERED", null));
         log.info("Delivery completed for orderId: {}, event published to Kafka", orderId);
     }
 }

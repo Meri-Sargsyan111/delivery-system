@@ -1,0 +1,52 @@
+name: Backend CI
+on:
+  push:
+    branches: [delivery-system]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+  pull_request:
+    branches: [delivery-system]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
+
+jobs:
+  build:
+    name: ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - api-gateway
+          - auth-service
+          - chat-service
+          - courier-service
+          - notification-service
+          - order-service
+          - tracking-service
+    defaults:
+      run:
+        working-directory: backend/${{ matrix.service }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Build and test
+        run: mvn -B -ntp verify
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports-${{ matrix.service }}
+          path: backend/${{ matrix.service }}/target/surefire-reports
+          if-no-files-found: ignore

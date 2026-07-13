@@ -5,43 +5,56 @@ spring:
   application:
     name: api-gateway
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${AUTH_SERVICE_URL:http://localhost:8085}/auth/.well-known/jwks.json
+
   cloud:
     gateway:
-      globalcors:
-        cors-configurations:
-          '[/**]':
-            allowedOrigins:
-              - "http://localhost:4200"
-            allowedMethods:
-              - GET
-              - POST
-              - PUT
-              - DELETE
-              - OPTIONS
-            allowedHeaders: "*"
-
       routes:
+        - id: auth-service
+          uri: ${AUTH_SERVICE_URL:http://localhost:8085}
+          predicates:
+            - Path=/auth/**
+
         - id: order-service
-          uri: http://localhost:8081
+          uri: ${ORDER_SERVICE_URL:http://localhost:8081}
           predicates:
             - Path=/orders/**
 
         - id: courier-service
-          uri: http://localhost:8082
+          uri: ${COURIER_SERVICE_URL:http://localhost:8082}
           predicates:
             - Path=/courier/**
 
         - id: tracking-service
-          uri: http://localhost:8083
+          uri: ${TRACKING_SERVICE_URL:http://localhost:8083}
           predicates:
             - Path=/tracking/**
 
         - id: notification-service
-          uri: http://localhost:8084
+          uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8084}
           predicates:
             - Path=/notifications/**
 
         - id: notification-websocket
-          uri: http://localhost:8084
+          uri: ${NOTIFICATION_SERVICE_URL:http://localhost:8084}
           predicates:
             - Path=/ws/**
+
+        - id: courier-location-websocket
+          uri: ${COURIER_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/ws-location/**
+
+        - id: chat-service
+          uri: ${CHAT_SERVICE_URL:http://localhost:8086}
+          predicates:
+            - Path=/chat/**
+
+        - id: chat-websocket
+          uri: ${CHAT_SERVICE_URL:http://localhost:8086}
+          predicates:
+            - Path=/ws-chat/**

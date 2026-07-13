@@ -1,6 +1,6 @@
 package com.example.trackingservice.service;
 
-import com.example.trackingservice.entity.TrackingEvent;
+import com.example.trackingservice.dto.TrackingEventResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -19,16 +19,18 @@ public interface TrackingService {
      * they were persisted.
      *
      * @param orderId the unique identifier of the order to look up
-     * @return a list of {@link TrackingEvent} entries for that order;
+     * @return a list of {@link TrackingEventResponse} entries for that order;
      *         empty if no events have been recorded yet
+     * @throws org.springframework.security.access.AccessDeniedException if the caller is
+     *         not ADMIN, the owning customer, or the assigned courier for this order
      */
-    List<TrackingEvent> getTracking(Long orderId);
+    List<TrackingEventResponse> getTracking(Long orderId);
 
     /**
-     * Returns a paginated view of every tracking event across all orders.
+     * Returns a paginated view of every tracking event across all orders. ADMIN only.
      *
      * @param pageable pagination and sorting parameters
-     * @return a {@link Page} of {@link TrackingEvent} entities
+     * @return a {@link Page} of {@link TrackingEventResponse}
      */
-    Page<TrackingEvent> getAllEvents(Pageable pageable);
+    Page<TrackingEventResponse> getAllEvents(Pageable pageable);
 }

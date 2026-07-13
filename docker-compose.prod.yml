@@ -1,0 +1,73 @@
+# Deployment-only override, applied on top of docker-compose.yml via:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile full-stack up -d --build
+#
+# docker-compose.yml's own comments document that MODE A (--profile full-stack, every
+# service containerized) needs KAFKA_ADVERTISED_LISTENERS to point at the kafka service's
+# hostname instead of localhost, since "localhost" inside a container is the container
+# itself, not the kafka container. This is the one value that differs between local MODE A
+# testing and a real deployment where nothing runs natively - kept as a separate override
+# file so docker-compose.yml itself (and its documented local dev workflow) is untouched.
+#
+# This file also adds a Caddy reverse proxy as the only publicly reachable service, and
+# caps every JVM's heap so the whole stack (kafka + postgres + 7 Spring Boot services +
+# caddy) has a chance of fitting on a small 2GB deployment box. `ports:` entries across
+# compose files are concatenated, not replaced (Compose merge semantics), which is why
+# docker-compose.yml itself binds every service's published port to 127.0.0.1 - only
+# caddy, defined here, publishes a port to 0.0.0.0.
+services:
+  kafka:
+    environment:
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      # Default heap on cp-kafka can reach ~1G unconstrained, too much on a 2GB host.
+      KAFKA_HEAP_OPTS: "-Xmx256M -Xms256M"
+
+  auth-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx192m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC"
+
+  order-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx192m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC"
+
+  courier-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx192m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC"
+
+  tracking-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx192m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC"
+
+  notification-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx192m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC"
+
+  chat-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx192m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC"
+
+  api-gateway:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx224m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC"
+
+  # Only publicly published port in the whole stack. Reverse-proxies to api-gateway over
+  # the internal compose network (reachable as "api-gateway:8080" regardless of whether
+  # api-gateway also publishes a host port). See ./Caddyfile - defaults to plain HTTP on
+  # the bare IP; swap in a domain there once one is pointed at this server for automatic
+  # Let's Encrypt HTTPS.
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["full-stack"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api-gateway
+
+volumes:
+  caddy_data:
+  caddy_config:

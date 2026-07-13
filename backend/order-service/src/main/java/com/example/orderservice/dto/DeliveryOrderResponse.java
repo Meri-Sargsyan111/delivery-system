@@ -15,4 +15,6 @@ public class DeliveryOrderResponse {
     private String fromAddress;
     private String toAddress;
     private OrderStatus status;
+    private Long courierId;
+    private String customerPhone;
 }
