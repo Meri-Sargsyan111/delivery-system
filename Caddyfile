@@ -12,12 +12,20 @@
 # prefix (/orders, /tracking, /notifications), so "GET /orders" is genuinely ambiguous -
 # it means "user refreshed the Orders page" from the browser address bar, or "Angular's
 # own HttpClient calling the orders API" from already-loaded JS. Real browser top-level
-# navigations (address bar, refresh, back/forward) always send Sec-Fetch-Dest: document
-# for that request - all current browsers set this automatically (Fetch Metadata Request
-# Headers) - whereas Angular's HttpClient calls never do. Checking that header first,
-# before the path-based API matcher, resolves the ambiguity correctly in both directions.
+# navigations (address bar, refresh, back/forward) always send an Accept header led by
+# text/html; Angular's HttpClient (plain XHR, no Accept override) sends Accept: */*.
+# Checking that first, before the path-based API matcher, resolves the ambiguity
+# correctly in both directions.
+#
+# NOTE: an earlier version of this fix matched on Sec-Fetch-Dest: document instead.
+# That header is only sent by browsers on secure contexts (HTTPS, or http://localhost /
+# 127.0.0.1) - this deployment is plain HTTP to a bare public IP, which Chromium does NOT
+# treat as a secure context, so it silently omitted Sec-Fetch-Dest entirely and that
+# matcher never fired in production (confirmed via tcpdump on the server showing the
+# header genuinely absent from the wire, despite curl -H tests passing). Accept has no
+# such restriction - it is sent on every request regardless of scheme.
 :80 {
-	@navigation header Sec-Fetch-Dest document
+	@navigation header Accept *text/html*
 	handle @navigation {
 		reverse_proxy frontend:80
 	}
