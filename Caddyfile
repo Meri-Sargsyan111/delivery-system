@@ -13,9 +13,9 @@
 # it means "user refreshed the Orders page" from the browser address bar, or "Angular's
 # own HttpClient calling the orders API" from already-loaded JS. Real browser top-level
 # navigations (address bar, refresh, back/forward) always send an Accept header led by
-# text/html; Angular's HttpClient (plain XHR, no Accept override) sends Accept: */*.
-# Checking that first, before the path-based API matcher, resolves the ambiguity
-# correctly in both directions.
+# text/html; Angular's HttpClient's XHR calls never do (observed live: "application/json,
+# text/plain, */*"). Checking that first, before the path-based API matcher, resolves the
+# ambiguity correctly in both directions.
 #
 # NOTE: an earlier version of this fix matched on Sec-Fetch-Dest: document instead.
 # That header is only sent by browsers on secure contexts (HTTPS, or http://localhost /
@@ -24,9 +24,19 @@
 # matcher never fired in production (confirmed via tcpdump on the server showing the
 # header genuinely absent from the wire, despite curl -H tests passing). Accept has no
 # such restriction - it is sent on every request regardless of scheme.
+#
+# The Accept matcher alone isn't sufficient either: OrderService.getOrders() calls the
+# exact same URL as the Orders page's own navigation ("/orders", no query string, no
+# sub-path - unlike /tracking/{id} or /notifications?page=...). nginx's static index.html
+# response carries ETag/Last-Modified, so the browser's own HTTP cache satisfies the
+# second (XHR) request from its cache of the first (navigation) response without ever
+# asking Caddy - Accept-based routing never even runs. Explicitly marking the navigation
+# response no-store prevents the browser from caching it, forcing every request for these
+# paths to hit Caddy and be routed fresh every time.
 :80 {
 	@navigation header Accept *text/html*
 	handle @navigation {
+		header Cache-Control "no-store"
 		reverse_proxy frontend:80
 	}
 
