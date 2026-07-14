@@ -7,11 +7,26 @@
 # everything else (the Angular app shell, its JS/CSS bundles, and any of its client-side
 # routes) falls through to the frontend container, whose own nginx handles the SPA
 # fallback for deep-link refreshes.
+#
+# Path alone is not enough: several Angular routes share a name with a backend API path
+# prefix (/orders, /tracking, /notifications), so "GET /orders" is genuinely ambiguous -
+# it means "user refreshed the Orders page" from the browser address bar, or "Angular's
+# own HttpClient calling the orders API" from already-loaded JS. Real browser top-level
+# navigations (address bar, refresh, back/forward) always send Sec-Fetch-Dest: document
+# for that request - all current browsers set this automatically (Fetch Metadata Request
+# Headers) - whereas Angular's HttpClient calls never do. Checking that header first,
+# before the path-based API matcher, resolves the ambiguity correctly in both directions.
 :80 {
+	@navigation header Sec-Fetch-Dest document
+	handle @navigation {
+		reverse_proxy frontend:80
+	}
+
 	@api path /auth /auth/* /orders /orders/* /courier /courier/* /tracking /tracking/* /notifications /notifications/* /chat /chat/* /ws /ws/* /ws-location /ws-location/* /ws-chat /ws-chat/*
 	handle @api {
 		reverse_proxy api-gateway:8080
 	}
+
 	handle {
 		reverse_proxy frontend:80
 	}
