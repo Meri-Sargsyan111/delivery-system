@@ -13,6 +13,7 @@ import com.example.courierservice.repository.CourierAssignmentRepository;
 import com.example.courierservice.repository.CourierRatingRepository;
 import com.example.courierservice.repository.CourierRepository;
 import com.example.courierservice.security.CurrentUser;
+import com.example.courierservice.service.AvatarStorageService;
 import com.example.courierservice.service.impl.CourierAssignmentServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,7 +29,9 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -57,6 +60,7 @@ class CourierAssignmentServiceImplTest {
     @Mock private CourierRatingRepository courierRatingRepository;
     @Mock private KafkaTemplate<String, DeliveryUpdateEvent> kafkaTemplate;
     @Mock private CurrentUser currentUser;
+    @Mock private AvatarStorageService avatarStorageService;
 
     @InjectMocks private CourierAssignmentServiceImpl courierAssignmentService;
 
@@ -449,5 +453,59 @@ class CourierAssignmentServiceImplTest {
 
         assertThat(result.getContent().get(0).getAverageRating()).isNull();
         assertThat(result.getContent().get(0).getRatingCount()).isEqualTo(0);
+    }
+
+    @Test
+    void uploadMyAvatar_whenLinked_storesFileAndUpdatesPhotoUrl() {
+        asCourier(COURIER_USER_ID);
+        Courier courier = new Courier(5L, "Alice Johnson", CourierStatus.AVAILABLE, null, COURIER_USER_ID);
+        when(courierRepository.findByUserId(COURIER_USER_ID)).thenReturn(Optional.of(courier));
+        MultipartFile file = new MockMultipartFile("file", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        when(avatarStorageService.store(5L, file)).thenReturn("/courier/5/avatar");
+
+        CourierResponse response = courierAssignmentService.uploadMyAvatar(file);
+
+        assertThat(courier.getPhotoUrl()).isEqualTo("/courier/5/avatar");
+        assertThat(response.getPhotoUrl()).isEqualTo("/courier/5/avatar");
+        verify(courierRepository).save(courier);
+    }
+
+    @Test
+    void uploadMyAvatar_whenNotLinked_throwsEntityNotFoundExceptionAndDoesNotStore() {
+        asCourier(OTHER_COURIER_USER_ID);
+        when(courierRepository.findByUserId(OTHER_COURIER_USER_ID)).thenReturn(Optional.empty());
+        MultipartFile file = new MockMultipartFile("file", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+        assertThatThrownBy(() -> courierAssignmentService.uploadMyAvatar(file))
+                .isInstanceOf(EntityNotFoundException.class);
+
+        verify(avatarStorageService, never()).store(any(), any());
+        verify(courierRepository, never()).save(any());
+    }
+
+    @Test
+    void uploadAvatarForCourier_whenExists_storesFileAndUpdatesPhotoUrl() {
+        Courier courier = new Courier(7L, "Bob Martins", CourierStatus.AVAILABLE, null, null);
+        when(courierRepository.findById(7L)).thenReturn(Optional.of(courier));
+        MultipartFile file = new MockMultipartFile("file", "avatar.png", "image/png", new byte[]{1, 2, 3});
+        when(avatarStorageService.store(7L, file)).thenReturn("/courier/7/avatar");
+
+        CourierResponse response = courierAssignmentService.uploadAvatarForCourier(7L, file);
+
+        assertThat(courier.getPhotoUrl()).isEqualTo("/courier/7/avatar");
+        assertThat(response.getPhotoUrl()).isEqualTo("/courier/7/avatar");
+        verify(courierRepository).save(courier);
+    }
+
+    @Test
+    void uploadAvatarForCourier_whenNotFound_throwsEntityNotFoundExceptionAndDoesNotStore() {
+        when(courierRepository.findById(99L)).thenReturn(Optional.empty());
+        MultipartFile file = new MockMultipartFile("file", "avatar.png", "image/png", new byte[]{1, 2, 3});
+
+        assertThatThrownBy(() -> courierAssignmentService.uploadAvatarForCourier(99L, file))
+                .isInstanceOf(EntityNotFoundException.class);
+
+        verify(avatarStorageService, never()).store(any(), any());
+        verify(courierRepository, never()).save(any());
     }
 }

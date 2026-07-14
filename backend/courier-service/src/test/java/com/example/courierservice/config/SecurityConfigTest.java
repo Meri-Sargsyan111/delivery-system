@@ -3,6 +3,7 @@ package com.example.courierservice.config;
 import com.example.courierservice.controller.CourierController;
 import com.example.courierservice.courier.CourierStatus;
 import com.example.courierservice.dto.CourierResponse;
+import com.example.courierservice.service.AvatarStorageService;
 import com.example.courierservice.service.CourierAssignmentService;
 import com.example.courierservice.service.CourierRatingService;
 import com.example.courierservice.service.CourierService;
@@ -14,17 +15,21 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpMethod;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -44,6 +49,7 @@ class SecurityConfigTest {
     @MockBean private LocationService locationService;
     @MockBean private CourierAssignmentService courierAssignmentService;
     @MockBean private CourierRatingService courierRatingService;
+    @MockBean private AvatarStorageService avatarStorageService;
     @MockBean private JwtDecoder jwtDecoder;
 
     @Test
@@ -127,5 +133,76 @@ class SecurityConfigTest {
                         .content("{\"name\":\"New Courier\"}")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_COURIER"))))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void uploadMyAvatar_withoutToken_returns401() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+        mockMvc.perform(multipart("/courier/me/avatar").file(file))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void uploadMyAvatar_withCustomerRole_returns403() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+        mockMvc.perform(multipart("/courier/me/avatar").file(file)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_CUSTOMER"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void uploadMyAvatar_withCourierRole_reachesController() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        when(courierAssignmentService.uploadMyAvatar(any())).thenReturn(
+                new CourierResponse(1L, "Alice", CourierStatus.AVAILABLE, null, 0, "/courier/1/avatar"));
+
+        mockMvc.perform(multipart("/courier/me/avatar").file(file)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_COURIER"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void uploadAvatarForCourier_withoutToken_returns401() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+        mockMvc.perform(multipart(HttpMethod.PUT, "/courier/1/avatar").file(file))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void uploadAvatarForCourier_withCourierRole_returns403() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
+
+        mockMvc.perform(multipart(HttpMethod.PUT, "/courier/1/avatar").file(file)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_COURIER"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void uploadAvatarForCourier_withAdminRole_reachesController() throws Exception {
+        MockMultipartFile file = new MockMultipartFile("file", "avatar.jpg", "image/jpeg", new byte[]{1, 2, 3});
+        when(courierAssignmentService.uploadAvatarForCourier(any(), any())).thenReturn(
+                new CourierResponse(1L, "Alice", CourierStatus.AVAILABLE, null, 0, "/courier/1/avatar"));
+
+        mockMvc.perform(multipart(HttpMethod.PUT, "/courier/1/avatar").file(file)
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getAvatar_withoutToken_returns401() throws Exception {
+        mockMvc.perform(get("/courier/1/avatar"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void getAvatar_withAnyAuthenticatedRole_reachesController() throws Exception {
+        when(avatarStorageService.load(1L)).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/courier/1/avatar")
+                        .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_CUSTOMER"))))
+                .andExpect(status().isNotFound());
     }
 }

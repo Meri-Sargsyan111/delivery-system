@@ -8,21 +8,27 @@ import com.example.courierservice.dto.CreateCourierRequest;
 import com.example.courierservice.dto.RateOrderRequest;
 import com.example.courierservice.dto.RatingResponse;
 import com.example.courierservice.dto.ReserveCourierResponse;
+import com.example.courierservice.exception.EntityNotFoundException;
+import com.example.courierservice.service.AvatarStorageService;
 import com.example.courierservice.service.CourierAssignmentService;
 import com.example.courierservice.service.CourierRatingService;
 import com.example.courierservice.service.CourierService;
 import com.example.courierservice.service.LocationService;
+import com.example.courierservice.service.StoredAvatarResource;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -37,6 +43,7 @@ public class CourierController {
     private final LocationService locationService;
     private final CourierAssignmentService courierAssignmentService;
     private final CourierRatingService courierRatingService;
+    private final AvatarStorageService avatarStorageService;
 
     /**
      * Read-only courier summary (id/name/status/photoUrl/rating - no userId or other
@@ -128,5 +135,39 @@ public class CourierController {
     public ResponseEntity<Void> sendLocation(@RequestBody CourierLocation location) {
         locationService.sendLocation(location);
         return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Self-service avatar upload: always resolves the target courier from the caller's
+     * own JWT (see CourierAssignmentService.uploadMyAvatar), never from a client-supplied id.
+     */
+    @PreAuthorize("hasRole('COURIER')")
+    @PostMapping(value = "/me/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<CourierResponse> uploadMyAvatar(@RequestParam("file") MultipartFile file) {
+        log.info("POST /courier/me/avatar");
+        return ResponseEntity.ok(courierAssignmentService.uploadMyAvatar(file));
+    }
+
+    /**
+     * Explicit admin override, distinct from the courier's own upload path: an admin
+     * cannot overwrite a courier's avatar via /me/avatar, only via this dedicated endpoint.
+     */
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping(value = "/{courierId}/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<CourierResponse> uploadAvatarForCourier(
+            @PathVariable Long courierId, @RequestParam("file") MultipartFile file) {
+        log.info("PUT /courier/{}/avatar - admin override", courierId);
+        return ResponseEntity.ok(courierAssignmentService.uploadAvatarForCourier(courierId, file));
+    }
+
+    /**
+     * Read-only, left open to any authenticated role - matches {@link #listCouriers}'s
+     * openness, since the same customer-facing orders list needs to render this image.
+     */
+    @GetMapping("/{courierId}/avatar")
+    public ResponseEntity<Resource> getAvatar(@PathVariable Long courierId) {
+        StoredAvatarResource avatar = avatarStorageService.load(courierId)
+                .orElseThrow(() -> new EntityNotFoundException("No avatar found for courier " + courierId));
+        return ResponseEntity.ok().contentType(avatar.mediaType()).body(avatar.resource());
     }
 }

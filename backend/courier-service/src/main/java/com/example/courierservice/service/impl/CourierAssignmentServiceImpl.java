@@ -13,6 +13,7 @@ import com.example.courierservice.repository.CourierAssignmentRepository;
 import com.example.courierservice.repository.CourierRatingRepository;
 import com.example.courierservice.repository.CourierRepository;
 import com.example.courierservice.security.CurrentUser;
+import com.example.courierservice.service.AvatarStorageService;
 import com.example.courierservice.service.CourierAssignmentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -37,6 +39,7 @@ public class CourierAssignmentServiceImpl implements CourierAssignmentService {
     private final CourierRatingRepository courierRatingRepository;
     private final KafkaTemplate<String, DeliveryUpdateEvent> kafkaTemplate;
     private final CurrentUser currentUser;
+    private final AvatarStorageService avatarStorageService;
 
     @Override
     public Page<CourierResponse> listCouriers(CourierStatus status, Pageable pageable) {
@@ -164,6 +167,28 @@ public class CourierAssignmentServiceImpl implements CourierAssignmentService {
         Courier courier = new Courier(null, name, CourierStatus.AVAILABLE, null, userId);
         courierRepository.save(courier);
         log.info("Courier profile auto-created for newly registered user {}", userId);
+    }
+
+    @Override
+    public CourierResponse uploadMyAvatar(MultipartFile file) {
+        Courier courier = courierRepository.findByUserId(currentUser.getUserId())
+                .orElseThrow(() -> new EntityNotFoundException("No courier record linked to this account"));
+        return storeAvatarAndRespond(courier, file);
+    }
+
+    @Override
+    public CourierResponse uploadAvatarForCourier(Long courierId, MultipartFile file) {
+        Courier courier = courierRepository.findById(courierId)
+                .orElseThrow(() -> new EntityNotFoundException("Courier not found with id: " + courierId));
+        return storeAvatarAndRespond(courier, file);
+    }
+
+    private CourierResponse storeAvatarAndRespond(Courier courier, MultipartFile file) {
+        String avatarUrl = avatarStorageService.store(courier.getId(), file);
+        courier.setPhotoUrl(avatarUrl);
+        courierRepository.save(courier);
+        log.info("Avatar updated for courier {}", courier.getId());
+        return toResponse(courier);
     }
 
     private CourierResponse toResponse(Courier courier) {

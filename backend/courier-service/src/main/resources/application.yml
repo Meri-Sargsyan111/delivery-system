@@ -19,6 +19,10 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: true
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
 
 server:
   port: 8082
@@ -26,3 +30,7 @@ server:
 services:
   order-service:
     base-url: ${ORDER_SERVICE_URL:http://localhost:8081}
+
+courier:
+  avatar:
+    storage-path: ${AVATAR_STORAGE_PATH:uploads/avatars}

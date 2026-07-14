@@ -104,6 +104,8 @@ services:
     profiles: ["full-stack"]
     ports:
       - "127.0.0.1:8082:8082"
+    volumes:
+      - courier_avatars:/app/uploads/avatars
     depends_on:
       postgres:
         condition: service_healthy
@@ -118,6 +120,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      AVATAR_STORAGE_PATH: /app/uploads/avatars
 
   tracking-service:
     build: ./backend/tracking-service
@@ -207,3 +210,9 @@ services:
       TRACKING_SERVICE_URL: http://tracking-service:8083
       NOTIFICATION_SERVICE_URL: http://notification-service:8084
       CHAT_SERVICE_URL: http://chat-service:8086
+
+# Named volume for courier avatars (MODE A only): survives container recreation/rebuilds,
+# unlike the container's own writable layer. Bind-mounted at courier-service's
+# AVATAR_STORAGE_PATH above.
+volumes:
+  courier_avatars:

@@ -6,6 +6,7 @@ import com.example.courierservice.dto.CourierResponse;
 import com.example.courierservice.dto.CreateCourierRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -96,4 +97,22 @@ public interface CourierAssignmentService {
      * @param name the courier's display name
      */
     void registerCourierAccount(UUID userId, String name);
+
+    /**
+     * Uploads or replaces the avatar for the authenticated COURIER caller's own
+     * courier record. Never resolves the target courier from a client-supplied id.
+     *
+     * @throws com.example.courierservice.exception.EntityNotFoundException if the caller has no linked courier record
+     * @throws com.example.courierservice.exception.InvalidAvatarException if the file is missing, oversized, or not a supported image type
+     */
+    CourierResponse uploadMyAvatar(MultipartFile file);
+
+    /**
+     * Admin-only explicit override: uploads or replaces the avatar for any courier by id,
+     * bypassing the self-service ownership check in {@link #uploadMyAvatar}.
+     *
+     * @throws com.example.courierservice.exception.EntityNotFoundException if the courier does not exist
+     * @throws com.example.courierservice.exception.InvalidAvatarException if the file is missing, oversized, or not a supported image type
+     */
+    CourierResponse uploadAvatarForCourier(Long courierId, MultipartFile file);
 }
