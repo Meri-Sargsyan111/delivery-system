@@ -37,8 +37,7 @@ public class CourierRatingServiceImpl implements CourierRatingService {
 
         RemoteOrderView order = orderServiceClient.getOrder(orderId);
 
-        if (!currentUser.isAdmin()
-                && (order.getCustomerUserId() == null || !currentUser.getUserId().equals(order.getCustomerUserId()))) {
+        if (!currentUser.isAdmin() && isNotOwningCustomer(order)) {
             throw new AccessDeniedException("Not authorized to rate order " + orderId);
         }
 
@@ -65,5 +64,9 @@ public class CourierRatingServiceImpl implements CourierRatingService {
 
         return new RatingResponse(rating.getId(), rating.getOrderId(), rating.getCourierId(),
                 rating.getValue(), rating.getRatedAt());
+    }
+
+    private boolean isNotOwningCustomer(RemoteOrderView order) {
+        return order.getCustomerUserId() == null || !currentUser.getUserId().equals(order.getCustomerUserId());
     }
 }

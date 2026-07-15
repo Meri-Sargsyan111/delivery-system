@@ -69,7 +69,15 @@ public class AuthServiceImpl implements AuthService {
         }
 
         Role role = resolvePubliclyRegistrableRole(request.getRole());
+        User user = buildUserFromRequest(request, role);
+        User saved = userRepository.save(user);
 
+        publishCourierRegisteredIfNeeded(role, saved);
+
+        return userMapper.toResponse(saved);
+    }
+
+    private User buildUserFromRequest(RegisterRequest request, Role role) {
         User user = new User();
         user.setFirstName(request.getFirstName());
         user.setLastName(request.getLastName());
@@ -77,15 +85,14 @@ public class AuthServiceImpl implements AuthService {
         user.setPhoneNumber(request.getPhoneNumber());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setRole(role);
+        return user;
+    }
 
-        User saved = userRepository.save(user);
-
+    private void publishCourierRegisteredIfNeeded(Role role, User saved) {
         if (role == Role.ROLE_COURIER) {
             courierRegisteredKafkaTemplate.send("courier-registered",
                     new CourierRegisteredEvent(saved.getId(), saved.getFirstName(), saved.getLastName()));
         }
-
-        return userMapper.toResponse(saved);
     }
 
     /**

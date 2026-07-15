@@ -47,19 +47,9 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public OrderResponse createOrder(CreateOrderRequest request) {
         try {
-            DeliveryOrder order = orderMapper.toEntity(request);
-            order.setStatus(OrderStatus.CREATED);
-
-            order.setCustomerUserId(currentUser.getUserId());
-
+            DeliveryOrder order = buildNewOrder(request);
             orderRepository.save(order);
-
-            kafkaTemplate.send("new-orders",
-                    new OrderCreatedEvent(
-                            order.getId(),
-                            order.getCustomerName(),
-                            order.getToAddress(),
-                            order.getCustomerUserId()));
+            publishOrderCreatedEvent(order);
 
             log.info("Order {} created and published to Kafka", order.getId());
             return new OrderResponse(order.getId(), "Order created");
@@ -68,6 +58,22 @@ public class OrderServiceImpl implements OrderService {
             log.error("Failed to create order", e);
             throw e;
         }
+    }
+
+    private DeliveryOrder buildNewOrder(CreateOrderRequest request) {
+        DeliveryOrder order = orderMapper.toEntity(request);
+        order.setStatus(OrderStatus.CREATED);
+        order.setCustomerUserId(currentUser.getUserId());
+        return order;
+    }
+
+    private void publishOrderCreatedEvent(DeliveryOrder order) {
+        kafkaTemplate.send("new-orders",
+                new OrderCreatedEvent(
+                        order.getId(),
+                        order.getCustomerName(),
+                        order.getToAddress(),
+                        order.getCustomerUserId()));
     }
 
     @Override
@@ -177,12 +183,17 @@ public class OrderServiceImpl implements OrderService {
         log.info("Order {} status changed to CANCELLED", id);
 
         if (hadAssignedCourier) {
-            deliveryUpdateKafkaTemplate.send("delivery-updates",
-                    new DeliveryUpdateEvent(order.getId(), null, "CANCELLED", null));
-            log.info("Published CANCELLED delivery update for order {} to free courier {}", id, order.getCourierId());
+            publishCancelledDeliveryUpdate(order);
         }
 
         return new OrderResponse(order.getId(), "Order cancelled");
+    }
+
+    private void publishCancelledDeliveryUpdate(DeliveryOrder order) {
+        deliveryUpdateKafkaTemplate.send("delivery-updates",
+                new DeliveryUpdateEvent(order.getId(), null, "CANCELLED", null));
+        log.info("Published CANCELLED delivery update for order {} to free courier {}",
+                order.getId(), order.getCourierId());
     }
 
     private DeliveryOrder findOrder(Long id) {

@@ -8,6 +8,7 @@ import com.example.chatservice.exception.ChatSendingDisabledException;
 import com.example.chatservice.mapper.ChatMessageMapper;
 import com.example.chatservice.repository.ChatMessageRepository;
 import com.example.chatservice.repository.OrderParticipantsRepository;
+import com.example.chatservice.security.AuthorityRoles;
 import com.example.chatservice.security.CurrentUser;
 import com.example.chatservice.service.ChatService;
 import com.example.chatservice.ws.ChatChannelInterceptor;
@@ -73,30 +74,41 @@ public class ChatServiceImpl implements ChatService {
     @Override
     public ChatMessage sendMessage(Long orderId, UUID senderUserId, String senderRole, String content) {
         requireParticipant(orderId, senderUserId, senderRole);
+        requireSendable(orderId);
+        validateContent(content);
 
+        ChatMessage message = buildMessage(orderId, senderUserId, senderRole, content);
+
+        ChatMessage saved = chatMessageRepository.save(message);
+        log.info("Chat message persisted: orderId={}, senderRole={}", orderId, senderRole);
+        return saved;
+    }
+
+    private void requireSendable(Long orderId) {
         OrderParticipants participants = orderParticipantsRepository.findById(orderId)
                 .orElseThrow(() -> new ChatNotAvailableException("Chat is not available for order " + orderId));
         if (TERMINAL_STATUSES.contains(participants.getOrderStatus())) {
             throw new ChatSendingDisabledException("Order " + orderId + " has reached a terminal state ("
                     + participants.getOrderStatus() + "); sending is disabled, history remains readable");
         }
+    }
 
+    private void validateContent(String content) {
         if (content == null || content.isBlank()) {
             throw new IllegalArgumentException("message content must not be blank");
         }
         if (content.length() > MAX_MESSAGE_LENGTH) {
             throw new IllegalArgumentException("message content exceeds the maximum length of " + MAX_MESSAGE_LENGTH);
         }
+    }
 
+    private ChatMessage buildMessage(Long orderId, UUID senderUserId, String senderRole, String content) {
         ChatMessage message = new ChatMessage();
         message.setOrderId(orderId);
         message.setSenderUserId(senderUserId);
         message.setSenderRole(senderRole);
         message.setContent(content);
-
-        ChatMessage saved = chatMessageRepository.save(message);
-        log.info("Chat message persisted: orderId={}, senderRole={}", orderId, senderRole);
-        return saved;
+        return message;
     }
 
     @Override
@@ -131,11 +143,7 @@ public class ChatServiceImpl implements ChatService {
     }
 
     private String extractRole(AbstractAuthenticationToken authentication) {
-        return authentication.getAuthorities().stream()
-                .map(Object::toString)
-                .filter(authority -> authority.startsWith("ROLE_"))
-                .findFirst()
-                .map(authority -> authority.substring("ROLE_".length()))
+        return AuthorityRoles.extractRole(authentication)
                 .orElseThrow(() -> new IllegalStateException("Authenticated principal has no role"));
     }
 }

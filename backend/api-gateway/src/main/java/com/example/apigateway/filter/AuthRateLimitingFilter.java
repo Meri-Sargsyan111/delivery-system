@@ -68,7 +68,7 @@ public class AuthRateLimitingFilter implements WebFilter {
                 : "unknown";
     }
 
-    private static final class Window {
+    private static class Window {
         final long windowStart;
         final AtomicInteger count = new AtomicInteger(1);
 

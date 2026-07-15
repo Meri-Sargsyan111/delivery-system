@@ -36,12 +36,7 @@ public class AvatarStorageServiceImpl implements AvatarStorageService {
 
     @Override
     public String store(Long courierId, MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new InvalidAvatarException("Avatar file must not be empty");
-        }
-        if (file.getSize() > MAX_FILE_SIZE_BYTES) {
-            throw new InvalidAvatarException("Avatar file exceeds the maximum allowed size of 5MB");
-        }
+        validateFile(file);
 
         AvatarImageType imageType = detectImageType(file);
         deleteExisting(courierId);
@@ -65,6 +60,15 @@ public class AvatarStorageServiceImpl implements AvatarStorageService {
         }
         AvatarImageType imageType = AvatarImageType.byExtension(extensionOf(match));
         return Optional.of(new StoredAvatarResource(new FileSystemResource(match), imageType.mediaType()));
+    }
+
+    private void validateFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new InvalidAvatarException("Avatar file must not be empty");
+        }
+        if (file.getSize() > MAX_FILE_SIZE_BYTES) {
+            throw new InvalidAvatarException("Avatar file exceeds the maximum allowed size of 5MB");
+        }
     }
 
     private void deleteExisting(Long courierId) {

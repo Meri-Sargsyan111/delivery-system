@@ -39,17 +39,19 @@ public class LocationServiceImpl implements LocationService {
         if (!currentUser.isAuthenticated() || currentUser.isAdmin()) {
             return;
         }
-
-        CourierAssignment assignment = courierAssignmentRepository.findByOrderId(orderId).orElse(null);
-        if (assignment != null && currentUser.isCourier()) {
-            boolean isAssignedCourier = courierRepository.findByUserId(currentUser.getUserId())
-                    .map(courier -> courier.getId().equals(assignment.getCourierId()))
-                    .orElse(false);
-            if (isAssignedCourier) {
-                return;
-            }
+        if (isAssignedCourierForOrder(orderId)) {
+            return;
         }
-
         throw new AccessDeniedException("Not authorized to update location for order " + orderId);
+    }
+
+    private boolean isAssignedCourierForOrder(Long orderId) {
+        CourierAssignment assignment = courierAssignmentRepository.findByOrderId(orderId).orElse(null);
+        if (assignment == null || !currentUser.isCourier()) {
+            return false;
+        }
+        return courierRepository.findByUserId(currentUser.getUserId())
+                .map(courier -> courier.getId().equals(assignment.getCourierId()))
+                .orElse(false);
     }
 }

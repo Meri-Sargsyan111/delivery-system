@@ -43,17 +43,7 @@ public class CourierServiceImpl implements CourierService {
                     "Order " + orderId + " cannot start delivery: current status is " + order.getStatus());
         }
 
-        String courierName = courierAssignmentService.getAssignment(orderId).getCourierName();
-
-        CourierUpdate update = new CourierUpdate();
-
-        update.setOrderId(orderId);
-        update.setCourierName(courierName);
-        update.setStatus("IN_PROGRESS");
-        courierUpdateRepository.save(update);
-
-        kafkaTemplate.send("delivery-updates",
-                new DeliveryUpdateEvent(orderId, courierName, "IN_PROGRESS", order.getCourierUserId()));
+        recordAndPublishStatusUpdate(orderId, order, "IN_PROGRESS");
         log.info("Delivery started for orderId: {}, event published to Kafka", orderId);
 
         locationSimulatorService.startTracking(orderId);
@@ -72,23 +62,26 @@ public class CourierServiceImpl implements CourierService {
                     "Order " + orderId + " cannot be delivered: current status is " + order.getStatus());
         }
 
-        String courierName = courierAssignmentService.getAssignment(orderId).getCourierName();
-
-        CourierUpdate update = new CourierUpdate();
-
-        update.setOrderId(orderId);
-        update.setCourierName(courierName);
-        update.setStatus("DELIVERED");
-        courierUpdateRepository.save(update);
-
-        kafkaTemplate.send("delivery-updates",
-                new DeliveryUpdateEvent(orderId, courierName, "DELIVERED", order.getCourierUserId()));
+        recordAndPublishStatusUpdate(orderId, order, "DELIVERED");
         log.info("Order {} marked as DELIVERED, event published to Kafka", orderId);
 
         courierAssignmentService.releaseCourierForOrder(orderId);
         locationSimulatorService.stopTracking(orderId);
 
         return "Delivery completed";
+    }
+
+    private void recordAndPublishStatusUpdate(Long orderId, RemoteOrderView order, String status) {
+        String courierName = courierAssignmentService.getAssignment(orderId).getCourierName();
+
+        CourierUpdate update = new CourierUpdate();
+        update.setOrderId(orderId);
+        update.setCourierName(courierName);
+        update.setStatus(status);
+        courierUpdateRepository.save(update);
+
+        kafkaTemplate.send("delivery-updates",
+                new DeliveryUpdateEvent(orderId, courierName, status, order.getCourierUserId()));
     }
 
     /**

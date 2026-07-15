@@ -1,5 +1,6 @@
 package com.example.chatservice.ws;
 
+import com.example.chatservice.security.AuthorityRoles;
 import com.example.chatservice.service.ChatService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -143,11 +144,7 @@ public class ChatChannelInterceptor implements ChannelInterceptor {
     }
 
     private String extractRole(AbstractAuthenticationToken authentication) {
-        return authentication.getAuthorities().stream()
-                .map(Object::toString)
-                .filter(authority -> authority.startsWith("ROLE_"))
-                .findFirst()
-                .map(authority -> authority.substring("ROLE_".length()))
+        return AuthorityRoles.extractRole(authentication)
                 .orElseThrow(() -> new MessagingException("Authenticated principal has no role"));
     }
 }
