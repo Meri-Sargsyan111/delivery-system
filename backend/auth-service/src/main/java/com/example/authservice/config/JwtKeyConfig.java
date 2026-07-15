@@ -33,6 +33,8 @@ import java.util.Base64;
 @Configuration
 public class JwtKeyConfig {
 
+    public static final int RSA_KEY_SIZE_BITS = 2048;
+
     @Value("${jwt.private-key-location:}")
     private String privateKeyLocation;
 
@@ -48,7 +50,7 @@ public class JwtKeyConfig {
                 "in-memory RSA keypair for this run. Tokens will not survive a restart and no other " +
                 "instance will trust them. Configure persistent keys before deploying beyond local dev.");
         KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-        generator.initialize(2048);
+        generator.initialize(RSA_KEY_SIZE_BITS);
         return generator.generateKeyPair();
     }
 

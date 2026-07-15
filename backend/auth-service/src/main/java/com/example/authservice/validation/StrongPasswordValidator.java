@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 public class StrongPasswordValidator implements ConstraintValidator<StrongPassword, String> {
 
     private static final Pattern PATTERN = Pattern.compile(
-            "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^a-zA-Z0-9]).{8,}$");
+            "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^a-zA-Z0-9]).{" + StrongPassword.MIN_LENGTH + ",}$");
 
     @Override
     public boolean isValid(String value, ConstraintValidatorContext context) {

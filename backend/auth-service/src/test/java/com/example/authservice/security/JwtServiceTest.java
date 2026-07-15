@@ -1,5 +1,6 @@
 package com.example.authservice.security;
 
+import com.example.authservice.config.JwtKeyConfig;
 import com.example.authservice.entity.Role;
 import com.example.authservice.entity.User;
 import com.nimbusds.jose.jwk.JWKSet;
@@ -32,7 +33,7 @@ class JwtServiceTest {
     @BeforeEach
     void setUp() throws Exception {
         KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-        generator.initialize(2048);
+        generator.initialize(JwtKeyConfig.RSA_KEY_SIZE_BITS);
         KeyPair keyPair = generator.generateKeyPair();
         RSAPublicKey publicKey = (RSAPublicKey) keyPair.getPublic();
         RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();

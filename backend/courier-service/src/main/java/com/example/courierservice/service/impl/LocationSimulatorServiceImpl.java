@@ -18,6 +18,8 @@ public class LocationSimulatorServiceImpl implements LocationSimulatorService {
 
     private final LocationService locationService;
 
+    private static final long SIMULATION_INTERVAL_MS = 3000;
+
     private static final double[][] ROUTE = {
         {40.1772, 44.5035},
         {40.1780, 44.5042},
@@ -45,7 +47,7 @@ public class LocationSimulatorServiceImpl implements LocationSimulatorService {
     }
 
     @Override
-    @Scheduled(fixedDelay = 3000)
+    @Scheduled(fixedDelay = SIMULATION_INTERVAL_MS)
     public void simulateMovement() {
         Long orderId = activeOrderId.get();
         if (orderId == null) {
