@@ -154,7 +154,6 @@ class CourierServiceImplTest {
         verify(kafkaTemplate, never()).send(any(), any());
     }
 
-
     @Test
     void markAsDelivered_whenInProgress_persistsUpdateRecordAndReleasesCourier() {
         when(orderServiceClient.getOrder(20L)).thenReturn(new RemoteOrderView(20L, "IN_PROGRESS", null, COURIER_USER_ID));
@@ -206,8 +205,6 @@ class CourierServiceImplTest {
 
     @Test
     void markAsDelivered_whenAlreadyDelivered_throwsInvalidOrderState() {
-
-
         when(orderServiceClient.getOrder(20L)).thenReturn(new RemoteOrderView(20L, "DELIVERED", null, COURIER_USER_ID));
 
         assertThatThrownBy(() -> courierService.markAsDelivered(20L))
