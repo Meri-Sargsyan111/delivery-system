@@ -90,11 +90,6 @@ services:
       JWT_PRIVATE_KEY_LOCATION: /app/keys/private_key.pem
       JWT_PUBLIC_KEY_LOCATION: /app/keys/public_key.pem
       AVATAR_UPLOAD_DIR: /app/uploads/avatars
-      # Sends the post-registration welcome email (see EmailServiceImpl). Real values come
-      # from a project-root .env file (gitignored, never committed) via Compose's own
-      # variable substitution - same account/credentials as notification-service below.
-      MAIL_USERNAME: ${MAIL_USERNAME}
-      MAIL_PASSWORD: ${MAIL_PASSWORD}
       # Bootstrap ROLE_ADMIN account (see AdminSeeder). Falls back to the same dev-only
       # default as application.yml when unset - override both in the project-root .env
       # for any real deployment so the seeded admin isn't a publicly-known credential.
@@ -181,12 +176,6 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      # Real SMTP credentials are dev-machine-local secrets, never committed (see project-root
-      # .env, gitignored). Mail sending is best-effort (NotificationServiceImpl logs a
-      # warning and continues on failure), so an unset .env still lets the container start
-      # and every other notification path (DB, WebSocket) work normally without real mail.
-      MAIL_USERNAME: ${MAIL_USERNAME}
-      MAIL_PASSWORD: ${MAIL_PASSWORD}
 
   chat-service:
     build: ./backend/chat-service

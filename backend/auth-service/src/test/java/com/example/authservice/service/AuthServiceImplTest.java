@@ -52,7 +52,6 @@ class AuthServiceImplTest {
     @Mock private AuthenticationManager authenticationManager;
     @Mock private JwtService jwtService;
     @Mock private UserMapper userMapper;
-    @Mock private EmailService emailService;
     @Mock private KafkaTemplate<String, CourierRegisteredEvent> courierRegisteredKafkaTemplate;
 
     @InjectMocks private AuthServiceImpl authService;
@@ -114,51 +113,6 @@ class AuthServiceImplTest {
         assertThat(eventCaptor.getValue().getUserId()).isEqualTo(savedId);
         assertThat(eventCaptor.getValue().getFirstName()).isEqualTo("Jane");
         assertThat(eventCaptor.getValue().getLastName()).isEqualTo("Rider");
-    }
-
-    @Test
-    void register_customerRole_sendsWelcomeEmailToRegisteredAddress() {
-        RegisterRequest request = new RegisterRequest(
-                "John", "Doe", "john5@example.com", "+1111111116", "Str0ng!Pass", "Str0ng!Pass", "CUSTOMER");
-
-        when(userRepository.existsByEmail("john5@example.com")).thenReturn(false);
-        when(userRepository.existsByPhoneNumber("+1111111116")).thenReturn(false);
-        when(passwordEncoder.encode("Str0ng!Pass")).thenReturn("hashed");
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(userMapper.toResponse(any(User.class))).thenReturn(new UserResponse());
-
-        authService.register(request);
-
-        verify(emailService).sendWelcomeEmail("john5@example.com", "John");
-    }
-
-    @Test
-    void register_courierRole_alsoSendsWelcomeEmail() {
-        RegisterRequest request = new RegisterRequest(
-                "Jane", "Rider", "jane4@example.com", "+1111111117", "Str0ng!Pass", "Str0ng!Pass", "COURIER");
-
-        when(userRepository.existsByEmail("jane4@example.com")).thenReturn(false);
-        when(userRepository.existsByPhoneNumber("+1111111117")).thenReturn(false);
-        when(passwordEncoder.encode("Str0ng!Pass")).thenReturn("hashed");
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(userMapper.toResponse(any(User.class))).thenReturn(new UserResponse());
-
-        authService.register(request);
-
-        verify(emailService).sendWelcomeEmail("jane4@example.com", "Jane");
-    }
-
-    @Test
-    void register_invalidRole_neverSendsWelcomeEmail() {
-        RegisterRequest request = new RegisterRequest(
-                "John", "Doe", "john6@example.com", "+1111111118", "Str0ng!Pass", "Str0ng!Pass", "ADMIN");
-        lenient().when(userRepository.existsByEmail("john6@example.com")).thenReturn(false);
-        lenient().when(userRepository.existsByPhoneNumber("+1111111118")).thenReturn(false);
-
-        assertThatThrownBy(() -> authService.register(request))
-                .isInstanceOf(InvalidRegistrationRoleException.class);
-
-        verify(emailService, never()).sendWelcomeEmail(any(), any());
     }
 
     @Test

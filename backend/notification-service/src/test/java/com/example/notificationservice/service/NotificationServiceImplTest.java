@@ -17,10 +17,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
 import java.util.UUID;
@@ -44,24 +41,13 @@ class NotificationServiceImplTest {
     private static final UUID OTHER_USER_ID = UUID.randomUUID();
 
     @Mock private NotificationRepository notificationRepository;
-    @Mock private JavaMailSender mailSender;
     @Mock private SimpMessagingTemplate messagingTemplate;
     @Mock private CurrentUser currentUser;
 
     @InjectMocks private NotificationServiceImpl notificationService;
 
-    private static final String RECIPIENT = "notify@example.com";
-    private static final String SUBJECT   = "Delivery Notification";
-
-    /**
-     * @Value fields are not set by Mockito's @InjectMocks (Spring-only injection).
-     * ReflectionTestUtils bridges the gap without touching production code.
-     */
     @BeforeEach
-    void injectValueFields() {
-        ReflectionTestUtils.setField(notificationService, "mailRecipient", RECIPIENT);
-        ReflectionTestUtils.setField(notificationService, "mailSubject", SUBJECT);
-
+    void setUp() {
         lenient().when(currentUser.isAdmin()).thenReturn(true);
         lenient().when(currentUser.getUserId()).thenReturn(ADMIN_ID);
     }
@@ -88,19 +74,6 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    void add_sendsEmailToConfiguredRecipientWithCorrectSubjectAndBody() {
-        notificationService.add("Order dispatched", RECIPIENT_USER_ID);
-
-        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
-        verify(mailSender).send(captor.capture());
-
-        SimpleMailMessage sent = captor.getValue();
-        assertThat(sent.getTo()).containsExactly(RECIPIENT);
-        assertThat(sent.getSubject()).isEqualTo(SUBJECT);
-        assertThat(sent.getText()).isEqualTo("Order dispatched");
-    }
-
-    @Test
     void add_broadcastsMessageToWebSocketNotificationsTopic() {
         notificationService.add("Order dispatched", RECIPIENT_USER_ID);
 
@@ -123,7 +96,7 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    void add_whenRepositoryThrows_propagatesExceptionAndSkipsEmailAndWebSocket() {
+    void add_whenRepositoryThrows_propagatesExceptionAndSkipsWebSocket() {
         when(notificationRepository.save(any(Notification.class)))
                 .thenThrow(new RuntimeException("DB unavailable"));
 
@@ -131,23 +104,11 @@ class NotificationServiceImplTest {
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("DB unavailable");
 
-        verify(mailSender, never()).send(any(SimpleMailMessage.class));
         verify(messagingTemplate, never()).convertAndSend(any(String.class), any(Object.class));
     }
 
     @Test
-    void add_whenMailSenderThrows_swallowsExceptionAndStillBroadcastsToWebSocket() {
-        doThrow(new RuntimeException("SMTP unavailable"))
-                .when(mailSender).send(any(SimpleMailMessage.class));
-
-        notificationService.add("Order dispatched", RECIPIENT_USER_ID);
-
-        verify(notificationRepository).save(any(Notification.class));
-        verify(messagingTemplate).convertAndSend("/topic/notifications", "Order dispatched");
-    }
-
-    @Test
-    void add_whenWebSocketThrows_propagatesExceptionAfterPersistAndEmail() {
+    void add_whenWebSocketThrows_propagatesExceptionAfterPersist() {
         doThrow(new RuntimeException("WebSocket unavailable"))
                 .when(messagingTemplate).convertAndSend(eq("/topic/notifications"), any(Object.class));
 
@@ -156,7 +117,6 @@ class NotificationServiceImplTest {
                 .hasMessage("WebSocket unavailable");
 
         verify(notificationRepository).save(any(Notification.class));
-        verify(mailSender).send(any(SimpleMailMessage.class));
     }
 
     @Test

@@ -19,7 +19,6 @@ import com.example.authservice.security.JwtService;
 import com.example.authservice.security.UserPrincipal;
 import com.example.authservice.service.AuthService;
 import com.example.authservice.service.AvatarStorageService;
-import com.example.authservice.service.EmailService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -56,7 +55,6 @@ public class AuthServiceImpl implements AuthService {
     private final JwtService jwtService;
     private final UserMapper userMapper;
     private final AvatarStorageService avatarStorageService;
-    private final EmailService emailService;
     private final KafkaTemplate<String, CourierRegisteredEvent> courierRegisteredKafkaTemplate;
 
     @Override
@@ -86,8 +84,6 @@ public class AuthServiceImpl implements AuthService {
             courierRegisteredKafkaTemplate.send("courier-registered",
                     new CourierRegisteredEvent(saved.getId(), saved.getFirstName(), saved.getLastName()));
         }
-
-        emailService.sendWelcomeEmail(saved.getEmail(), saved.getFirstName());
 
         return userMapper.toResponse(saved);
     }
