@@ -1,5 +1,10 @@
 server:
   port: 8080
+  # Deployed behind Caddy (see Caddyfile) as the only reverse proxy in front of this
+  # service - safe to trust its X-Forwarded-* headers so getRemoteAddress() resolves to
+  # the real client IP (needed for AuthRateLimitingFilter's per-IP limiting) instead of
+  # Caddy's own container address.
+  forward-headers-strategy: framework
 
 spring:
   application:

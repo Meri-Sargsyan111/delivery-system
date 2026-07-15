@@ -55,7 +55,7 @@ jwt:
 auth:
   refresh-cookie:
     name: refresh_token
-    secure: false
+    secure: ${AUTH_REFRESH_COOKIE_SECURE:false}
     same-site: Lax
 
 admin:

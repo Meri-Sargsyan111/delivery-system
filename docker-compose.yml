@@ -54,7 +54,7 @@ services:
     environment:
       POSTGRES_DB: deliverydb
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
       - ./docker/postgres-init:/docker-entrypoint-initdb.d
     healthcheck:
@@ -80,7 +80,7 @@ services:
       KAFKA_BROKER: kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/authdb
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       # Persistent RS256 keypair (see JwtKeyConfig): without this, every restart generates
       # a brand-new ephemeral in-memory keypair, silently invalidating every issued JWT for
       # every user - the exact cause of intermittent 401s (surfaced by the frontend as a
@@ -95,6 +95,11 @@ services:
       # variable substitution - same account/credentials as notification-service below.
       MAIL_USERNAME: ${MAIL_USERNAME}
       MAIL_PASSWORD: ${MAIL_PASSWORD}
+      # Bootstrap ROLE_ADMIN account (see AdminSeeder). Falls back to the same dev-only
+      # default as application.yml when unset - override both in the project-root .env
+      # for any real deployment so the seeded admin isn't a publicly-known credential.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@delivery.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@12345}
 
   order-service:
     build: ./backend/order-service
@@ -114,7 +119,7 @@ services:
       KAFKA_BROKER: kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
 
   courier-service:
     build: ./backend/courier-service
@@ -136,7 +141,7 @@ services:
       KAFKA_BROKER: kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       AVATAR_STORAGE_PATH: /app/uploads/avatars
 
   tracking-service:
@@ -156,7 +161,7 @@ services:
       KAFKA_BROKER: kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
 
   notification-service:
     build: ./backend/notification-service
@@ -175,7 +180,7 @@ services:
       KAFKA_BROKER: kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       # Real SMTP credentials are dev-machine-local secrets, never committed (see project-root
       # .env, gitignored). Mail sending is best-effort (NotificationServiceImpl logs a
       # warning and continues on failure), so an unset .env still lets the container start
@@ -200,7 +205,7 @@ services:
       KAFKA_BROKER: kafka:9092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/chatdb
       SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
 
   api-gateway:
     build: ./backend/api-gateway
