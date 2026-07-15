@@ -34,10 +34,6 @@ public class CurrentUser {
         return hasRole("COURIER");
     }
 
-    public boolean isCustomer() {
-        return hasRole("CUSTOMER");
-    }
-
     private Jwt jwt() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !(authentication.getPrincipal() instanceof Jwt jwt)) {

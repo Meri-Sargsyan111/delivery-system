@@ -350,30 +350,6 @@ class AuthServiceImplTest {
         verify(jwtService, never()).generateAccessToken(any());
     }
 
-    @Test
-    void getCurrentUser_existingUser_returnsUserResponse() {
-        UUID userId = UUID.randomUUID();
-        User user = new User();
-        user.setId(userId);
-        UserResponse expectedResponse = new UserResponse();
-
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(userMapper.toResponse(user)).thenReturn(expectedResponse);
-
-        UserResponse response = authService.getCurrentUser(userId);
-
-        assertThat(response).isEqualTo(expectedResponse);
-    }
-
-    @Test
-    void getCurrentUser_missingUser_throwsInvalidCredentialsException() {
-        UUID userId = UUID.randomUUID();
-        when(userRepository.findById(userId)).thenReturn(Optional.empty());
-
-        assertThatThrownBy(() -> authService.getCurrentUser(userId))
-                .isInstanceOf(InvalidCredentialsException.class);
-    }
-
     private User argThatUserHasRole(Role role) {
         return org.mockito.ArgumentMatchers.argThat(user -> user.getRole() == role);
     }

@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
@@ -22,6 +23,7 @@ public class TrackingConsumer {
 
     @KafkaListener(topics = "delivery-updates", groupId = "tracking-group",
             containerFactory = "deliveryUpdateKafkaListenerContainerFactory")
+    @Transactional
     public void listen(DeliveryUpdateEvent event) {
 
         TrackingEvent trackingEvent = new TrackingEvent();

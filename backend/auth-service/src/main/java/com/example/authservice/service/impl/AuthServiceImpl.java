@@ -139,13 +139,6 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public UserResponse getCurrentUser(UUID userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new InvalidCredentialsException("Account no longer exists"));
-        return userMapper.toResponse(user);
-    }
-
-    @Override
     public UserProfileResponse getCurrentUser() {
         User user = loadCurrentUser();
         return userMapper.toProfileResponse(user);

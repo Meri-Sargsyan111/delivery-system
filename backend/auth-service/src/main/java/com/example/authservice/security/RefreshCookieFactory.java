@@ -33,10 +33,6 @@ public class RefreshCookieFactory {
         this.refreshTokenTtlSeconds = refreshTokenTtlSeconds;
     }
 
-    public String cookieName() {
-        return cookieName;
-    }
-
     public ResponseCookie build(String rawToken) {
         return baseBuilder()
                 .value(rawToken)

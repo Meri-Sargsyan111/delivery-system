@@ -1,11 +1,8 @@
 package com.example.chatservice.dto;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
-
-/** The only field a client ever supplies - sender identity/role/timestamp are server-derived. */
-public record SendMessageRequest(
-        @NotBlank(message = "message content must not be blank")
-        @Size(max = 2000, message = "message content exceeds the maximum length")
-        String content
-) {}
+/**
+ * The only field a client ever supplies - sender identity/role/timestamp are server-derived.
+ * Not validated via Bean Validation (the STOMP {@code @MessageMapping} that consumes this
+ * has no {@code @Valid}) - blank/length checks are enforced in ChatServiceImpl.sendMessage.
+ */
+public record SendMessageRequest(String content) {}

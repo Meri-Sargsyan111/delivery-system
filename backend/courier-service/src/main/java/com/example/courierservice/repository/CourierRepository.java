@@ -16,7 +16,5 @@ public interface CourierRepository extends JpaRepository<Courier, Long> {
 
     Page<Courier> findByStatus(CourierStatus status, Pageable pageable);
 
-    boolean existsByStatus(CourierStatus status);
-
     Optional<Courier> findByUserId(UUID userId);
 }

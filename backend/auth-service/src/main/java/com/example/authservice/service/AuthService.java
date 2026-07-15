@@ -23,8 +23,6 @@ public interface AuthService {
      */
     AuthResponse issueAccessToken(UUID userId);
 
-    UserResponse getCurrentUser(UUID userId);
-
     UserProfileResponse getCurrentUser();
 
     UserProfileResponse updateProfile(UpdateProfileRequest request);

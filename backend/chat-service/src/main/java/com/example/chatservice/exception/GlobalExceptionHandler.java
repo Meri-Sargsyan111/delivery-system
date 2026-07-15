@@ -26,15 +26,6 @@ public class GlobalExceptionHandler {
                 HttpStatus.FORBIDDEN.getReasonPhrase(), ex.getMessage(), request.getRequestURI()));
     }
 
-    @ExceptionHandler(EntityNotFoundException.class)
-    public ResponseEntity<ErrorResponse> handleEntityNotFoundException(
-            EntityNotFoundException ex, HttpServletRequest request) {
-
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(
-                LocalDateTime.now(), HttpStatus.NOT_FOUND.value(),
-                HttpStatus.NOT_FOUND.getReasonPhrase(), ex.getMessage(), request.getRequestURI()));
-    }
-
     @ExceptionHandler({ChatNotAvailableException.class, ChatSendingDisabledException.class})
     public ResponseEntity<ErrorResponse> handleChatStateConflict(
             RuntimeException ex, HttpServletRequest request) {
