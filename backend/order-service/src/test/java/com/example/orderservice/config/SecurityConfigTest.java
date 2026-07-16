@@ -13,7 +13,6 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.web.servlet.MockMvc;
-
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -21,7 +20,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
+import java.util.UUID;
 /**
  * Verifies the SecurityFilterChain wiring, not business logic: OrderService is mocked
  * out, and JwtDecoder is mocked so no real key material or network call to
@@ -116,7 +115,7 @@ class SecurityConfigTest {
 
         mockMvc.perform(post("/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"customerName\":\"x\",\"fromAddress\":\"a\",\"toAddress\":\"b\",\"customerPhone\":\"+37411100000\"}")
+                        .content("{\"customerId\":\"" + UUID.randomUUID() + "\",\"fromAddress\":\"a\",\"toAddress\":\"b\",\"customerPhone\":\"+37411100000\"}")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_COURIER"))))
                 .andExpect(status().isForbidden());
     }
@@ -127,7 +126,7 @@ class SecurityConfigTest {
 
         mockMvc.perform(post("/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"customerName\":\"x\",\"fromAddress\":\"a\",\"toAddress\":\"b\",\"customerPhone\":\"+37411100000\"}")
+                        .content("{\"customerId\":\"" + UUID.randomUUID() + "\",\"fromAddress\":\"a\",\"toAddress\":\"b\",\"customerPhone\":\"+37411100000\"}")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_CUSTOMER"))))
                 .andExpect(status().isCreated());
     }
@@ -138,7 +137,7 @@ class SecurityConfigTest {
 
         mockMvc.perform(post("/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"customerName\":\"x\",\"fromAddress\":\"a\",\"toAddress\":\"b\",\"customerPhone\":\"+37411100000\"}")
+                        .content("{\"customerId\":\"" + UUID.randomUUID() + "\",\"fromAddress\":\"a\",\"toAddress\":\"b\",\"customerPhone\":\"+37411100000\"}")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
                 .andExpect(status().isCreated());
     }

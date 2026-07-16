@@ -7,6 +7,8 @@ import com.example.orderservice.order.OrderStatus;
 import org.junit.jupiter.api.Test;
 import org.mapstruct.factory.Mappers;
 
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class OrderMapperTest {
@@ -16,7 +18,7 @@ class OrderMapperTest {
     @Test
     void toEntity_trimsSurroundingWhitespaceFromCustomerPhoneButPreservesInternalFormatting() {
         CreateOrderRequest request = new CreateOrderRequest(
-                "John", "From St", "To St", "  +1 202 555 0123  ");
+                UUID.randomUUID(), "From St", "To St", "  +1 202 555 0123  ");
 
         DeliveryOrder entity = orderMapper.toEntity(request);
 

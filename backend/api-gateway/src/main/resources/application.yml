@@ -24,6 +24,14 @@ spring:
           predicates:
             - Path=/auth/**
 
+        # Customer lookup lives in auth-service (see CustomerController) but is mapped
+        # at the root, not under /auth, so it routes the same way as every other
+        # cross-service-visible resource (/orders, /courier, ...).
+        - id: customer-service
+          uri: ${AUTH_SERVICE_URL:http://localhost:8085}
+          predicates:
+            - Path=/customers/**
+
         - id: order-service
           uri: ${ORDER_SERVICE_URL:http://localhost:8081}
           predicates:

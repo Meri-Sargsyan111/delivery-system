@@ -1,6 +1,7 @@
 package com.example.authservice.config;
 
 import com.example.authservice.controller.AuthController;
+import com.example.authservice.controller.CustomerController;
 import com.example.authservice.controller.JwkSetController;
 import com.example.authservice.security.JwtService;
 import com.example.authservice.security.RefreshCookieFactory;
@@ -16,12 +17,13 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.web.servlet.MockMvc;
-
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import java.util.UUID;
 
 /**
  * Verifies the SecurityFilterChain wiring itself (not business logic): which paths require
@@ -30,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * controller/service - so a request reaching the controller here (even one that then fails
  * for a missing/invalid cookie) proves this layer let it through correctly.
  */
-@WebMvcTest({AuthController.class, JwkSetController.class})
+@WebMvcTest({AuthController.class, JwkSetController.class, CustomerController.class})
 @Import({SecurityConfig.class, CorsConfig.class})
 class SecurityConfigTest {
 
@@ -88,6 +90,20 @@ class SecurityConfigTest {
     void jwks_isPublic() throws Exception {
         mockMvc.perform(get("/auth/.well-known/jwks.json"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void getCustomerById_isReachableWithoutToken() throws Exception {
+        when(authService.getCustomerById(any())).thenReturn(null);
+
+        mockMvc.perform(get("/customers/" + UUID.randomUUID()))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void listCustomers_withoutToken_returns401() throws Exception {
+        mockMvc.perform(get("/customers"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

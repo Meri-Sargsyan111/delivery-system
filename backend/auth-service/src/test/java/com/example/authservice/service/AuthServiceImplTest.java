@@ -1,12 +1,14 @@
 package com.example.authservice.service;
 
 import com.example.authservice.dto.AuthResponse;
+import com.example.authservice.dto.CustomerSummaryResponse;
 import com.example.authservice.dto.LoginRequest;
 import com.example.authservice.dto.RegisterRequest;
 import com.example.authservice.dto.UserResponse;
 import com.example.authservice.entity.Role;
 import com.example.authservice.entity.User;
 import com.example.authservice.event.CourierRegisteredEvent;
+import com.example.authservice.exception.CustomerNotFoundException;
 import com.example.authservice.exception.EmailAlreadyExistsException;
 import com.example.authservice.exception.InvalidCredentialsException;
 import com.example.authservice.exception.InvalidRegistrationRoleException;
@@ -32,6 +34,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -302,6 +305,47 @@ class AuthServiceImplTest {
                 .isInstanceOf(InvalidCredentialsException.class);
 
         verify(jwtService, never()).generateAccessToken(any());
+    }
+
+    @Test
+    void listCustomers_returnsSummariesForCustomerRoleOnly() {
+        User customer = new User();
+        customer.setRole(Role.ROLE_CUSTOMER);
+        CustomerSummaryResponse summary = new CustomerSummaryResponse(
+                UUID.randomUUID(), "John", "Doe", "john@example.com");
+
+        when(userRepository.findByRole(Role.ROLE_CUSTOMER)).thenReturn(List.of(customer));
+        when(userMapper.toCustomerSummary(customer)).thenReturn(summary);
+
+        List<CustomerSummaryResponse> result = authService.listCustomers();
+
+        assertThat(result).containsExactly(summary);
+    }
+
+    @Test
+    void getCustomerById_whenCustomerExists_returnsSummary() {
+        UUID customerId = UUID.randomUUID();
+        User customer = new User();
+        customer.setId(customerId);
+        customer.setRole(Role.ROLE_CUSTOMER);
+        CustomerSummaryResponse summary = new CustomerSummaryResponse(
+                customerId, "John", "Doe", "john@example.com");
+
+        when(userRepository.findByIdAndRole(customerId, Role.ROLE_CUSTOMER)).thenReturn(Optional.of(customer));
+        when(userMapper.toCustomerSummary(customer)).thenReturn(summary);
+
+        CustomerSummaryResponse result = authService.getCustomerById(customerId);
+
+        assertThat(result).isEqualTo(summary);
+    }
+
+    @Test
+    void getCustomerById_whenNotFoundOrNotACustomer_throwsCustomerNotFoundException() {
+        UUID customerId = UUID.randomUUID();
+        when(userRepository.findByIdAndRole(customerId, Role.ROLE_CUSTOMER)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> authService.getCustomerById(customerId))
+                .isInstanceOf(CustomerNotFoundException.class);
     }
 
     private User argThatUserHasRole(Role role) {

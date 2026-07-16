@@ -1,6 +1,7 @@
 package com.example.authservice.service.impl;
 
 import com.example.authservice.dto.AuthResponse;
+import com.example.authservice.dto.CustomerSummaryResponse;
 import com.example.authservice.dto.LoginRequest;
 import com.example.authservice.dto.RegisterRequest;
 import com.example.authservice.dto.UpdateProfileRequest;
@@ -9,6 +10,7 @@ import com.example.authservice.dto.UserResponse;
 import com.example.authservice.entity.Role;
 import com.example.authservice.entity.User;
 import com.example.authservice.event.CourierRegisteredEvent;
+import com.example.authservice.exception.CustomerNotFoundException;
 import com.example.authservice.exception.EmailAlreadyExistsException;
 import com.example.authservice.exception.InvalidCredentialsException;
 import com.example.authservice.exception.InvalidRegistrationRoleException;
@@ -31,6 +33,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -181,6 +184,20 @@ public class AuthServiceImpl implements AuthService {
         avatarStorageService.delete(oldAvatarUrl);
 
         return userMapper.toProfileResponse(saved);
+    }
+
+    @Override
+    public List<CustomerSummaryResponse> listCustomers() {
+        return userRepository.findByRole(Role.ROLE_CUSTOMER).stream()
+                .map(userMapper::toCustomerSummary)
+                .toList();
+    }
+
+    @Override
+    public CustomerSummaryResponse getCustomerById(UUID id) {
+        User customer = userRepository.findByIdAndRole(id, Role.ROLE_CUSTOMER)
+                .orElseThrow(() -> new CustomerNotFoundException("Customer not found with id: " + id));
+        return userMapper.toCustomerSummary(customer);
     }
 
     private User loadCurrentUser() {

@@ -45,6 +45,13 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
     }
 
+    @ExceptionHandler(CustomerNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleCustomerNotFoundException(
+            CustomerNotFoundException ex, HttpServletRequest request) {
+
+        return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+    }
+
     @ExceptionHandler(InvalidAvatarFileException.class)
     public ResponseEntity<ErrorResponse> handleInvalidAvatarFileException(
             InvalidAvatarFileException ex, HttpServletRequest request) {

@@ -2,6 +2,7 @@ package com.example.orderservice.service;
 
 import com.example.orderservice.client.CourierReservationResult;
 import com.example.orderservice.client.CourierServiceClient;
+import com.example.orderservice.client.CustomerLookupResult;
 import com.example.orderservice.dto.CreateOrderRequest;
 import com.example.orderservice.dto.DeliveryOrderResponse;
 import com.example.orderservice.dto.OrderResponse;
@@ -16,6 +17,7 @@ import com.example.orderservice.mapper.OrderMapper;
 import com.example.orderservice.order.OrderStatus;
 import com.example.orderservice.repository.DeliveryOrderRepository;
 import com.example.orderservice.security.CurrentUser;
+import com.example.orderservice.service.impl.OrderCustomerResolver;
 import com.example.orderservice.service.impl.OrderServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -65,6 +67,7 @@ class OrderServiceImplTest {
     @Mock private KafkaTemplate<String, DeliveryUpdateEvent> deliveryUpdateKafkaTemplate;
     @Mock private OrderMapper orderMapper;
     @Mock private CourierServiceClient courierServiceClient;
+    @Mock private OrderCustomerResolver orderCustomerResolver;
     @Mock private CurrentUser currentUser;
 
     private OrderServiceImpl orderService;
@@ -72,7 +75,7 @@ class OrderServiceImplTest {
     @BeforeEach
     void setUp() {
         orderService = new OrderServiceImpl(orderRepository, kafkaTemplate, deliveryUpdateKafkaTemplate,
-                orderMapper, courierServiceClient, currentUser);
+                orderMapper, courierServiceClient, orderCustomerResolver, currentUser);
         asAdmin();
     }
 
@@ -101,11 +104,13 @@ class OrderServiceImplTest {
     }
 
     @Test
-    void createOrder_validRequest_persistsWithCreatedStatusAndOwnerFromSecurityContextAndPublishesToKafka() {
+    void createOrder_validRequest_persistsWithCreatedStatusAndOwnerFromResolvedCustomerAndPublishesToKafka() {
         asCustomer(CUSTOMER_ID);
-        CreateOrderRequest request = new CreateOrderRequest("John", "From St", "To St", "+37499123456");
-        DeliveryOrder entity = new DeliveryOrder(1L, "John", "From St", "To St", null, null, "+37499123456", null, null);
+        CreateOrderRequest request = new CreateOrderRequest(null, "From St", "To St", "+37499123456");
+        DeliveryOrder entity = new DeliveryOrder(1L, null, "From St", "To St", null, null, "+37499123456", null, null);
 
+        when(orderCustomerResolver.resolve(request))
+                .thenReturn(new CustomerLookupResult(CUSTOMER_ID, "John", "Doe"));
         when(orderMapper.toEntity(request)).thenReturn(entity);
         when(orderRepository.save(entity)).thenReturn(entity);
 
@@ -116,15 +121,49 @@ class OrderServiceImplTest {
         assertThat(entity.getStatus()).isEqualTo(OrderStatus.CREATED);
 
         assertThat(entity.getCustomerUserId()).isEqualTo(CUSTOMER_ID);
+        assertThat(entity.getCustomerName()).isEqualTo("John Doe");
         verify(orderRepository).save(entity);
         verify(kafkaTemplate).send(eq("new-orders"), any(OrderCreatedEvent.class));
     }
 
     @Test
-    void createOrder_whenRepositoryThrows_rethrowsExceptionAndSkipsKafka() {
-        CreateOrderRequest request = new CreateOrderRequest("John", "From St", "To St", "+37499123456");
-        DeliveryOrder entity = new DeliveryOrder(null, "John", "From St", "To St", null, null, "+37499123456", null, null);
+    void createOrder_asAdmin_usesCustomerResolvedByOrderCustomerResolverAsOwner() {
+        CreateOrderRequest request = new CreateOrderRequest(CUSTOMER_ID, "From St", "To St", "+37499123456");
+        DeliveryOrder entity = new DeliveryOrder(1L, null, "From St", "To St", null, null, "+37499123456", null, null);
 
+        when(orderCustomerResolver.resolve(request))
+                .thenReturn(new CustomerLookupResult(CUSTOMER_ID, "Jane", "Smith"));
+        when(orderMapper.toEntity(request)).thenReturn(entity);
+        when(orderRepository.save(entity)).thenReturn(entity);
+
+        orderService.createOrder(request);
+
+        assertThat(entity.getCustomerUserId()).isEqualTo(CUSTOMER_ID);
+        assertThat(entity.getCustomerName()).isEqualTo("Jane Smith");
+        assertThat(entity.getCustomerUserId()).isNotEqualTo(ADMIN_ID);
+    }
+
+    @Test
+    void createOrder_whenCustomerResolutionFails_propagatesExceptionAndSkipsSave() {
+        CreateOrderRequest request = new CreateOrderRequest(CUSTOMER_ID, "From St", "To St", "+37499123456");
+
+        when(orderCustomerResolver.resolve(request))
+                .thenThrow(new EntityNotFoundException("Customer not found with id: " + CUSTOMER_ID));
+
+        assertThatThrownBy(() -> orderService.createOrder(request))
+                .isInstanceOf(EntityNotFoundException.class);
+
+        verify(orderRepository, never()).save(any());
+        verify(kafkaTemplate, never()).send(anyString(), any());
+    }
+
+    @Test
+    void createOrder_whenRepositoryThrows_rethrowsExceptionAndSkipsKafka() {
+        CreateOrderRequest request = new CreateOrderRequest(CUSTOMER_ID, "From St", "To St", "+37499123456");
+        DeliveryOrder entity = new DeliveryOrder(null, null, "From St", "To St", null, null, "+37499123456", null, null);
+
+        when(orderCustomerResolver.resolve(request))
+                .thenReturn(new CustomerLookupResult(CUSTOMER_ID, "John", "Doe"));
         when(orderMapper.toEntity(request)).thenReturn(entity);
         when(orderRepository.save(entity)).thenThrow(new RuntimeException("DB unavailable"));
 

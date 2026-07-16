@@ -1,6 +1,7 @@
 package com.example.authservice.service;
 
 import com.example.authservice.dto.AuthResponse;
+import com.example.authservice.dto.CustomerSummaryResponse;
 import com.example.authservice.dto.LoginRequest;
 import com.example.authservice.dto.RegisterRequest;
 import com.example.authservice.dto.UpdateProfileRequest;
@@ -8,6 +9,7 @@ import com.example.authservice.dto.UserProfileResponse;
 import com.example.authservice.dto.UserResponse;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.UUID;
 
 public interface AuthService {
@@ -28,4 +30,8 @@ public interface AuthService {
     UserProfileResponse updateProfile(UpdateProfileRequest request);
 
     UserProfileResponse uploadAvatar(MultipartFile file);
+
+    List<CustomerSummaryResponse> listCustomers();
+
+    CustomerSummaryResponse getCustomerById(UUID id);
 }

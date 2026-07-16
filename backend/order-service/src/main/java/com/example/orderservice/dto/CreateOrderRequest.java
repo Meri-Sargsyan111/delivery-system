@@ -7,14 +7,20 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.UUID;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class CreateOrderRequest {
 
-    @NotBlank
-    @Size(max = 100)
-    private String customerName;
+    /**
+     * Only meaningful for an ADMIN caller (the customer they picked) - required in that
+     * case, enforced by OrderCustomerResolver rather than bean validation here, since
+     * "required" depends on the caller's role. Never read for a CUSTOMER caller: see
+     * OrderCustomerResolver.
+     */
+    private UUID customerId;
 
     @NotBlank
     @Size(max = 255)

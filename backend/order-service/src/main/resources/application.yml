@@ -26,3 +26,5 @@ server:
 services:
   courier-service:
     base-url: ${COURIER_SERVICE_URL:http://localhost:8082}
+  auth-service:
+    base-url: ${AUTH_SERVICE_URL:http://localhost:8085}

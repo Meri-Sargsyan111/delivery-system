@@ -2,6 +2,7 @@ package com.example.orderservice.service.impl;
 
 import com.example.orderservice.client.CourierReservationResult;
 import com.example.orderservice.client.CourierServiceClient;
+import com.example.orderservice.client.CustomerLookupResult;
 import com.example.orderservice.dto.CreateOrderRequest;
 import com.example.orderservice.dto.DeliveryOrderResponse;
 import com.example.orderservice.dto.OrderResponse;
@@ -42,6 +43,7 @@ public class OrderServiceImpl implements OrderService {
     private final KafkaTemplate<String, DeliveryUpdateEvent> deliveryUpdateKafkaTemplate;
     private final OrderMapper orderMapper;
     private final CourierServiceClient courierServiceClient;
+    private final OrderCustomerResolver orderCustomerResolver;
     private final CurrentUser currentUser;
 
     @Override
@@ -61,9 +63,12 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private DeliveryOrder buildNewOrder(CreateOrderRequest request) {
+        CustomerLookupResult customer = orderCustomerResolver.resolve(request);
+
         DeliveryOrder order = orderMapper.toEntity(request);
         order.setStatus(OrderStatus.CREATED);
-        order.setCustomerUserId(currentUser.getUserId());
+        order.setCustomerUserId(customer.id());
+        order.setCustomerName((customer.firstName() + " " + customer.lastName()).trim());
         return order;
     }
 
