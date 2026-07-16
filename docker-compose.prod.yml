@@ -54,10 +54,20 @@ services:
   # api-gateway also publishes a host port). See ./Caddyfile - defaults to plain HTTP on
   # the bare IP; swap in a domain there once one is pointed at this server for automatic
   # Let's Encrypt HTTPS.
+  #
+  # --watch: Caddyfile is a read-only bind mount (see volumes below), which Caddy only
+  # reads at process start - `docker compose up -d` does NOT restart this container just
+  # because the file's on-disk *contents* changed, since Compose only recreates a
+  # container when its service *definition* (image/env/volumes mapping/etc) changes, and
+  # none of that changes when just the Caddyfile is edited. Without --watch, a corrected
+  # Caddyfile can be committed and deployed while this container keeps serving its old,
+  # in-memory route table indefinitely - e.g. a new API path silently 404s/falls through
+  # to the frontend's SPA fallback until someone thinks to manually restart caddy.
   caddy:
     image: caddy:2-alpine
     profiles: ["full-stack"]
     restart: unless-stopped
+    command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile --watch
     ports:
       - "80:80"
       - "443:443"
