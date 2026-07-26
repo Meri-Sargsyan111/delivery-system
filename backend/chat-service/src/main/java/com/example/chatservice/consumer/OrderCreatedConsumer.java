@@ -26,6 +26,7 @@ public class OrderCreatedConsumer {
         OrderParticipants participants = orderParticipantsRepository.findById(event.getOrderId())
                 .orElseGet(() -> new OrderParticipants(event.getOrderId(), null, null, "CREATED"));
         participants.setCustomerUserId(event.getCustomerUserId());
+        participants.setCustomerName(event.getCustomerName());
         orderParticipantsRepository.save(participants);
 
         log.info("Recorded chat participant: orderId={}, customerUserId={}",

@@ -28,6 +28,7 @@ public class DeliveryUpdateConsumer {
 
         if (event.getCourierUserId() != null) {
             participants.setCourierUserId(event.getCourierUserId());
+            participants.setCourierName(event.getCourierName());
         }
         participants.setOrderStatus(event.getStatus());
         orderParticipantsRepository.save(participants);

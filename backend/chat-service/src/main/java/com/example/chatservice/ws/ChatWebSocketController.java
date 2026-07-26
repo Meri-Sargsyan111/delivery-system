@@ -1,6 +1,7 @@
 package com.example.chatservice.ws;
 
 import com.example.chatservice.dto.ChatErrorResponse;
+import com.example.chatservice.dto.ReadMarkerRequest;
 import com.example.chatservice.dto.SendMessageRequest;
 import com.example.chatservice.service.ChatService;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,19 @@ public class ChatWebSocketController {
     public void send(@DestinationVariable Long orderId, @Payload SendMessageRequest request,
                       @Header("simpSessionId") String sessionId) {
         chatService.sendFromSession(orderId, sessionId, request.content());
+    }
+
+    /** Ephemeral - no persistence, just a relay. See ChatServiceImpl.broadcastTyping. */
+    @MessageMapping("/chat/{orderId}/typing")
+    public void typing(@DestinationVariable Long orderId, @Header("simpSessionId") String sessionId) {
+        chatService.broadcastTyping(orderId, sessionId);
+    }
+
+    /** Ephemeral - no persistence, just a relay. See ChatServiceImpl.broadcastReadMarker. */
+    @MessageMapping("/chat/{orderId}/read")
+    public void read(@DestinationVariable Long orderId, @Payload ReadMarkerRequest request,
+                      @Header("simpSessionId") String sessionId) {
+        chatService.broadcastReadMarker(orderId, sessionId, request.lastReadMessageId());
     }
 
     @MessageExceptionHandler

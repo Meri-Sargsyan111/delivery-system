@@ -48,8 +48,24 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class ChatChannelInterceptor implements ChannelInterceptor {
 
-    private static final Pattern SUBSCRIBE_ORDER_ID = Pattern.compile("^/topic/chat/order/(\\d+)$");
-    private static final Pattern SEND_ORDER_ID = Pattern.compile("^/app/chat/(\\d+)$");
+    /** The optional /typing and /read suffixes are the ephemeral relay destinations added
+     *  alongside the base chat topic - same orderId in group 1, same authorization rule
+     *  applies to all three (see authorize()). */
+    private static final Pattern SUBSCRIBE_ORDER_ID = Pattern.compile("^/topic/chat/order/(\\d+)(?:/typing|/read)?$");
+    private static final Pattern SEND_ORDER_ID = Pattern.compile("^/app/chat/(\\d+)(?:/typing|/read)?$");
+
+    /**
+     * Per-user unread-count push destination (see ChatServiceImpl.pushUnreadCountUpdate) -
+     * deliberately NOT implemented via Spring's convertAndSendToUser/"/user/queue/..."
+     * mechanism: that relies on accessor.setUser() being resolvable by
+     * UserDestinationMessageHandler at delivery time, and this class's own CONNECT-time
+     * accessor.setUser() call is exactly the propagation already documented above (and
+     * verified again for this specific case) as unreliable in this setup. A plain topic
+     * scoped by the user's own id in the path, authorized here at SUBSCRIBE time so only
+     * that same authenticated user may ever subscribe to it, sidesteps the unreliable
+     * mechanism entirely while staying just as private in practice.
+     */
+    private static final String UNREAD_TOPIC_PREFIX = "/topic/chat/unread/";
 
     private final JwtDecoder jwtDecoder;
     private final JwtAuthenticationConverter jwtAuthenticationConverter;
@@ -74,7 +90,9 @@ public class ChatChannelInterceptor implements ChannelInterceptor {
             authenticate(accessor, sessionId);
         } else if (StompCommand.SUBSCRIBE.equals(command)) {
             String destination = accessor.getDestination();
-            if (destination != null && destination.startsWith("/user/")) {
+            if (destination != null && destination.startsWith(UNREAD_TOPIC_PREFIX)) {
+                authorizeOwnUnreadTopic(sessionId, destination);
+            } else if (destination != null && destination.startsWith("/user/")) {
 
                 requireAuthenticated(sessionId);
             } else {
@@ -111,6 +129,19 @@ public class ChatChannelInterceptor implements ChannelInterceptor {
     private void requireAuthenticated(String sessionId) {
         if (!sessionAuthentications.containsKey(sessionId)) {
             throw new MessagingException("Not authenticated");
+        }
+    }
+
+    /** Only the authenticated user themselves may subscribe to their own /topic/chat/unread/{userId} - never another user's. */
+    private void authorizeOwnUnreadTopic(String sessionId, String destination) {
+        AbstractAuthenticationToken authentication = sessionAuthentications.get(sessionId);
+        if (authentication == null || !(authentication.getPrincipal() instanceof Jwt jwt)) {
+            throw new MessagingException("Not authenticated");
+        }
+
+        String claimedUserId = destination.substring(UNREAD_TOPIC_PREFIX.length());
+        if (!jwt.getSubject().equals(claimedUserId)) {
+            throw new MessagingException("Not authorized to subscribe to another user's unread-count topic");
         }
     }
 

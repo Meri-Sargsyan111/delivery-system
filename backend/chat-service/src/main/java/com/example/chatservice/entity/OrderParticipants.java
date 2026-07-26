@@ -33,4 +33,24 @@ public class OrderParticipants {
     private UUID courierUserId;
 
     private String orderStatus;
+
+    /**
+     * Denormalized display name, captured from the same Kafka events that already deliver
+     * these ids (OrderCreatedEvent/DeliveryUpdateEvent) - used only by the conversation-list
+     * endpoint (see ChatServiceImpl.getConversations), not by any authorization check. Null
+     * for participants recorded before this field existed, or before the corresponding event
+     * has arrived yet (e.g. courierName before a courier is assigned).
+     */
+    private String customerName;
+
+    private String courierName;
+
+    /** Pre-existing constructor shape, kept alongside the Lombok-generated 6-arg one so
+     *  the consumers' and tests' existing call sites don't need to change. */
+    public OrderParticipants(Long orderId, UUID customerUserId, UUID courierUserId, String orderStatus) {
+        this.orderId = orderId;
+        this.customerUserId = customerUserId;
+        this.courierUserId = courierUserId;
+        this.orderStatus = orderStatus;
+    }
 }

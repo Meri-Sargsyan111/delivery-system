@@ -1,6 +1,8 @@
 package com.example.chatservice.service;
 
 import com.example.chatservice.dto.ChatMessageResponse;
+import com.example.chatservice.dto.ConversationUnreadCount;
+import com.example.chatservice.dto.UnreadCountUpdate;
 import com.example.chatservice.entity.ChatMessage;
 import com.example.chatservice.entity.OrderParticipants;
 import com.example.chatservice.exception.ChatNotAvailableException;
@@ -286,6 +288,124 @@ class ChatServiceImplTest {
     }
 
     @Test
+    void sendMessage_customerToCourier_resolvesReceiverAsCourierAndDefaultsUnread() {
+        when(orderParticipantsRepository.findById(ORDER_ID)).thenReturn(Optional.of(assignedParticipants()));
+        when(chatMessageRepository.save(any(ChatMessage.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ChatMessage result = chatService.sendMessage(ORDER_ID, CUSTOMER_ID, "CUSTOMER", "where are you?");
+
+        assertThat(result.getReceiverUserId()).isEqualTo(COURIER_ID);
+        assertThat(result.isRead()).isFalse();
+    }
+
+    @Test
+    void sendMessage_courierToCustomer_resolvesReceiverAsCustomer() {
+        when(orderParticipantsRepository.findById(ORDER_ID)).thenReturn(Optional.of(assignedParticipants()));
+        when(chatMessageRepository.save(any(ChatMessage.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        ChatMessage result = chatService.sendMessage(ORDER_ID, COURIER_ID, "COURIER", "on my way");
+
+        assertThat(result.getReceiverUserId()).isEqualTo(CUSTOMER_ID);
+        assertThat(result.isRead()).isFalse();
+    }
+
+    @Test
+    void sendMessage_pushesUnreadCountUpdateToTheReceiverOnly() {
+        when(orderParticipantsRepository.findById(ORDER_ID)).thenReturn(Optional.of(assignedParticipants()));
+        when(chatMessageRepository.save(any(ChatMessage.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(chatMessageRepository.countByOrderIdAndReceiverUserIdAndReadFalse(ORDER_ID, COURIER_ID)).thenReturn(1L);
+        when(chatMessageRepository.countByReceiverUserIdAndReadFalse(COURIER_ID)).thenReturn(3L);
+
+        chatService.sendMessage(ORDER_ID, CUSTOMER_ID, "CUSTOMER", "hello");
+
+        ArgumentCaptor<UnreadCountUpdate> captor = ArgumentCaptor.forClass(UnreadCountUpdate.class);
+        verify(messagingTemplate).convertAndSend(eq("/topic/chat/unread/" + COURIER_ID), captor.capture());
+        assertThat(captor.getValue().orderId()).isEqualTo(ORDER_ID);
+        assertThat(captor.getValue().conversationUnreadCount()).isEqualTo(1L);
+        assertThat(captor.getValue().totalUnreadCount()).isEqualTo(3L);
+        verify(messagingTemplate, never()).convertAndSend(eq("/topic/chat/unread/" + CUSTOMER_ID), any(Object.class));
+    }
+
+    @Test
+    void broadcastReadMarker_marksUnreadMessagesReadAndPushesUpdateToTheReader() {
+        AbstractAuthenticationToken authentication =
+                new TestingAuthenticationToken(jwtFor(COURIER_ID), null, "ROLE_COURIER");
+        when(chatChannelInterceptor.getAuthentication("session-1")).thenReturn(authentication);
+        when(orderParticipantsRepository.findById(ORDER_ID)).thenReturn(Optional.of(assignedParticipants()));
+        when(chatMessageRepository.markAsReadForRecipient(ORDER_ID, COURIER_ID)).thenReturn(2);
+        when(chatMessageRepository.countByOrderIdAndReceiverUserIdAndReadFalse(ORDER_ID, COURIER_ID)).thenReturn(0L);
+        when(chatMessageRepository.countByReceiverUserIdAndReadFalse(COURIER_ID)).thenReturn(0L);
+
+        chatService.broadcastReadMarker(ORDER_ID, "session-1", 7L);
+
+        verify(chatMessageRepository).markAsReadForRecipient(ORDER_ID, COURIER_ID);
+        verify(chatMessageRepository, never()).save(any());
+        verify(messagingTemplate).convertAndSend(eq("/topic/chat/unread/" + COURIER_ID), any(UnreadCountUpdate.class));
+        verify(messagingTemplate).convertAndSend(eq("/topic/chat/order/" + ORDER_ID + "/read"), any(Object.class));
+    }
+
+    @Test
+    void broadcastReadMarker_whenNothingToMark_doesNotPushUnreadUpdate() {
+        AbstractAuthenticationToken authentication =
+                new TestingAuthenticationToken(jwtFor(COURIER_ID), null, "ROLE_COURIER");
+        when(chatChannelInterceptor.getAuthentication("session-1")).thenReturn(authentication);
+        when(orderParticipantsRepository.findById(ORDER_ID)).thenReturn(Optional.of(assignedParticipants()));
+        when(chatMessageRepository.markAsReadForRecipient(ORDER_ID, COURIER_ID)).thenReturn(0);
+
+        chatService.broadcastReadMarker(ORDER_ID, "session-1", 7L);
+
+        verify(messagingTemplate, never()).convertAndSend(eq("/topic/chat/unread/" + COURIER_ID), any(Object.class));
+        verify(messagingTemplate).convertAndSend(eq("/topic/chat/order/" + ORDER_ID + "/read"), any(Object.class));
+    }
+
+    @Test
+    void markConversationRead_asOwningCustomer_marksReadAndReturns() {
+        when(orderParticipantsRepository.findById(ORDER_ID)).thenReturn(Optional.of(assignedParticipants()));
+        when(chatMessageRepository.markAsReadForRecipient(ORDER_ID, CUSTOMER_ID)).thenReturn(4);
+
+        chatService.markConversationRead(ORDER_ID, CUSTOMER_ID, "CUSTOMER");
+
+        verify(chatMessageRepository).markAsReadForRecipient(ORDER_ID, CUSTOMER_ID);
+        verify(messagingTemplate).convertAndSend(eq("/topic/chat/unread/" + CUSTOMER_ID), any(UnreadCountUpdate.class));
+    }
+
+    @Test
+    void markConversationRead_asNonParticipant_throwsAccessDeniedAndDoesNotMarkAnything() {
+        when(orderParticipantsRepository.findById(ORDER_ID)).thenReturn(Optional.of(assignedParticipants()));
+
+        assertThatThrownBy(() -> chatService.markConversationRead(ORDER_ID, OTHER_CUSTOMER_ID, "CUSTOMER"))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verify(chatMessageRepository, never()).markAsReadForRecipient(any(), any());
+    }
+
+    @Test
+    void markConversationRead_beforeCourierAssigned_throwsChatNotAvailable() {
+        when(orderParticipantsRepository.findById(ORDER_ID))
+                .thenReturn(Optional.of(new OrderParticipants(ORDER_ID, CUSTOMER_ID, null, "CREATED")));
+
+        assertThatThrownBy(() -> chatService.markConversationRead(ORDER_ID, CUSTOMER_ID, "CUSTOMER"))
+                .isInstanceOf(ChatNotAvailableException.class);
+
+        verify(chatMessageRepository, never()).markAsReadForRecipient(any(), any());
+    }
+
+    @Test
+    void getUnreadCount_delegatesToRepositoryForThisUser() {
+        when(chatMessageRepository.countByReceiverUserIdAndReadFalse(CUSTOMER_ID)).thenReturn(5L);
+
+        assertThat(chatService.getUnreadCount(CUSTOMER_ID)).isEqualTo(5L);
+    }
+
+    @Test
+    void getUnreadCountsByConversation_delegatesToRepositoryForThisUser() {
+        List<ConversationUnreadCount> expected = List.of(new ConversationUnreadCount(ORDER_ID, 2L));
+        when(chatMessageRepository.countUnreadGroupedByOrderId(COURIER_ID)).thenReturn(expected);
+
+        assertThat(chatService.getUnreadCountsByConversation(COURIER_ID)).isEqualTo(expected);
+    }
+
+    @Test
     void requireParticipant_noOwnershipRecordAtAll_throwsChatNotAvailable() {
         when(orderParticipantsRepository.findById(ORDER_ID)).thenReturn(Optional.empty());
 
@@ -330,6 +450,55 @@ class ChatServiceImplTest {
                 .isInstanceOf(IllegalStateException.class);
 
         verify(chatMessageRepository, never()).save(any());
+        verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
+    }
+
+    @Test
+    void broadcastTyping_resolvesIdentityAndBroadcastsWithoutPersisting() {
+        AbstractAuthenticationToken authentication =
+                new TestingAuthenticationToken(jwtFor(CUSTOMER_ID), null, "ROLE_CUSTOMER");
+        when(chatChannelInterceptor.getAuthentication("session-1")).thenReturn(authentication);
+        when(orderParticipantsRepository.findById(ORDER_ID)).thenReturn(Optional.of(assignedParticipants()));
+
+        chatService.broadcastTyping(ORDER_ID, "session-1");
+
+        verify(messagingTemplate).convertAndSend(eq("/topic/chat/order/" + ORDER_ID + "/typing"), any(Object.class));
+        verify(chatMessageRepository, never()).save(any());
+    }
+
+    @Test
+    void broadcastTyping_whenNotAParticipant_throwsAccessDeniedAndDoesNotBroadcast() {
+        AbstractAuthenticationToken authentication =
+                new TestingAuthenticationToken(jwtFor(OTHER_CUSTOMER_ID), null, "ROLE_CUSTOMER");
+        when(chatChannelInterceptor.getAuthentication("session-1")).thenReturn(authentication);
+        when(orderParticipantsRepository.findById(ORDER_ID)).thenReturn(Optional.of(assignedParticipants()));
+
+        assertThatThrownBy(() -> chatService.broadcastTyping(ORDER_ID, "session-1"))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
+    }
+
+    @Test
+    void broadcastReadMarker_resolvesIdentityAndBroadcastsWithoutPersisting() {
+        AbstractAuthenticationToken authentication =
+                new TestingAuthenticationToken(jwtFor(COURIER_ID), null, "ROLE_COURIER");
+        when(chatChannelInterceptor.getAuthentication("session-1")).thenReturn(authentication);
+        when(orderParticipantsRepository.findById(ORDER_ID)).thenReturn(Optional.of(assignedParticipants()));
+
+        chatService.broadcastReadMarker(ORDER_ID, "session-1", 7L);
+
+        verify(messagingTemplate).convertAndSend(eq("/topic/chat/order/" + ORDER_ID + "/read"), any(Object.class));
+        verify(chatMessageRepository, never()).save(any());
+    }
+
+    @Test
+    void broadcastReadMarker_whenNoAuthenticationForSession_throwsIllegalState() {
+        when(chatChannelInterceptor.getAuthentication("unknown-session")).thenReturn(null);
+
+        assertThatThrownBy(() -> chatService.broadcastReadMarker(ORDER_ID, "unknown-session", 1L))
+                .isInstanceOf(IllegalStateException.class);
+
         verify(messagingTemplate, never()).convertAndSend(anyString(), any(Object.class));
     }
 }

@@ -157,6 +157,55 @@ class ChatChannelInterceptorTest {
     }
 
     @Test
+    void subscribe_toTypingTopic_stillResolvesOrderIdAndDelegatesToParticipantCheck() {
+        when(jwtDecoder.decode("good-token")).thenReturn(jwtWithRole("ROLE_CUSTOMER"));
+        doNothing().when(chatService).requireParticipant(ORDER_ID, USER_ID, "CUSTOMER");
+        ChatChannelInterceptor interceptor = interceptor();
+
+        interceptor.preSend(connectMessage(SESSION_ID, "Bearer good-token"), null);
+        interceptor.preSend(frame(StompCommand.SUBSCRIBE, SESSION_ID, "/topic/chat/order/" + ORDER_ID + "/typing"), null);
+
+        verify(chatService).requireParticipant(ORDER_ID, USER_ID, "CUSTOMER");
+    }
+
+    @Test
+    void subscribe_toReadTopic_stillResolvesOrderIdAndDelegatesToParticipantCheck() {
+        when(jwtDecoder.decode("good-token")).thenReturn(jwtWithRole("ROLE_COURIER"));
+        doNothing().when(chatService).requireParticipant(ORDER_ID, USER_ID, "COURIER");
+        ChatChannelInterceptor interceptor = interceptor();
+
+        interceptor.preSend(connectMessage(SESSION_ID, "Bearer good-token"), null);
+        interceptor.preSend(frame(StompCommand.SUBSCRIBE, SESSION_ID, "/topic/chat/order/" + ORDER_ID + "/read"), null);
+
+        verify(chatService).requireParticipant(ORDER_ID, USER_ID, "COURIER");
+    }
+
+    @Test
+    void send_toTypingDestination_stillResolvesOrderIdAndDelegatesToParticipantCheck() {
+        when(jwtDecoder.decode("good-token")).thenReturn(jwtWithRole("ROLE_CUSTOMER"));
+        doNothing().when(chatService).requireParticipant(ORDER_ID, USER_ID, "CUSTOMER");
+        ChatChannelInterceptor interceptor = interceptor();
+
+        interceptor.preSend(connectMessage(SESSION_ID, "Bearer good-token"), null);
+        interceptor.preSend(frame(StompCommand.SEND, SESSION_ID, "/app/chat/" + ORDER_ID + "/typing"), null);
+
+        verify(chatService).requireParticipant(ORDER_ID, USER_ID, "CUSTOMER");
+    }
+
+    @Test
+    void subscribe_asAdmin_toTypingTopic_isRejectedOutrightJustLikeTheBaseTopic() {
+        when(jwtDecoder.decode("admin-token")).thenReturn(jwtWithRole("ROLE_ADMIN"));
+        ChatChannelInterceptor interceptor = interceptor();
+        interceptor.preSend(connectMessage(SESSION_ID, "Bearer admin-token"), null);
+
+        assertThatThrownBy(() -> interceptor.preSend(
+                frame(StompCommand.SUBSCRIBE, SESSION_ID, "/topic/chat/order/" + ORDER_ID + "/read"), null))
+                .isInstanceOf(MessagingException.class);
+
+        verify(chatService, never()).requireParticipant(any(), any(), any());
+    }
+
+    @Test
     void subscribe_toOwnPrivateErrorQueue_isAllowedWithoutOrderParticipantCheck() {
 
         when(jwtDecoder.decode("good-token")).thenReturn(jwtWithRole("ROLE_CUSTOMER"));
@@ -172,6 +221,36 @@ class ChatChannelInterceptorTest {
     void subscribe_toPrivateErrorQueue_withoutPriorConnect_isRejected() {
         assertThatThrownBy(() -> interceptor().preSend(
                 frame(StompCommand.SUBSCRIBE, "never-connected-session", "/user/queue/chat/errors"), null))
+                .isInstanceOf(MessagingException.class);
+    }
+
+    @Test
+    void subscribe_toOwnUnreadTopic_isAllowedWithoutOrderParticipantCheck() {
+        when(jwtDecoder.decode("good-token")).thenReturn(jwtWithRole("ROLE_CUSTOMER"));
+        ChatChannelInterceptor interceptor = interceptor();
+        interceptor.preSend(connectMessage(SESSION_ID, "Bearer good-token"), null);
+
+        interceptor.preSend(frame(StompCommand.SUBSCRIBE, SESSION_ID, "/topic/chat/unread/" + USER_ID), null);
+
+        verify(chatService, never()).requireParticipant(any(), any(), any());
+    }
+
+    @Test
+    void subscribe_toAnotherUsersUnreadTopic_isRejected() {
+        when(jwtDecoder.decode("good-token")).thenReturn(jwtWithRole("ROLE_CUSTOMER"));
+        ChatChannelInterceptor interceptor = interceptor();
+        interceptor.preSend(connectMessage(SESSION_ID, "Bearer good-token"), null);
+        UUID someoneElse = UUID.randomUUID();
+
+        assertThatThrownBy(() -> interceptor.preSend(
+                frame(StompCommand.SUBSCRIBE, SESSION_ID, "/topic/chat/unread/" + someoneElse), null))
+                .isInstanceOf(MessagingException.class);
+    }
+
+    @Test
+    void subscribe_toUnreadTopic_withoutPriorConnect_isRejected() {
+        assertThatThrownBy(() -> interceptor().preSend(
+                frame(StompCommand.SUBSCRIBE, "never-connected-session", "/topic/chat/unread/" + USER_ID), null))
                 .isInstanceOf(MessagingException.class);
     }
 
