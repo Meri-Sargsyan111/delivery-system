@@ -1,9 +1,11 @@
 package com.example.orderservice.service;
 
+import com.example.orderservice.dto.CreateOrderFromPaymentRequest;
 import com.example.orderservice.dto.CreateOrderRequest;
 import com.example.orderservice.dto.DeliveryOrderResponse;
 import com.example.orderservice.dto.OrderResponse;
 import com.example.orderservice.dto.OrderStatusView;
+import com.example.orderservice.dto.UnassignOrderRequest;
 import com.example.orderservice.order.OrderStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -24,6 +26,19 @@ public interface OrderService {
      * @return an {@link OrderResponse} with the new order's ID and a confirmation message
      */
     OrderResponse createOrder(CreateOrderRequest request);
+
+    /**
+     * Creates an order on behalf of payment-service after a payment has been verified as
+     * SUCCEEDED - see CreateOrderFromPaymentRequest. Idempotent on
+     * {@code request.getPaymentId()}: a call repeated with the same paymentId (e.g. a
+     * retried call racing a not-yet-committed prior attempt) returns the existing order
+     * instead of creating a second one.
+     *
+     * @param request the payment-originated order details, including the explicit
+     *                customerId and paymentId (no JWT is available on this call path)
+     * @return an {@link OrderResponse} with the order's ID (new or pre-existing)
+     */
+    OrderResponse createOrderFromPayment(CreateOrderFromPaymentRequest request);
 
     /**
      * Returns a paginated list of all delivery orders.
@@ -74,6 +89,21 @@ public interface OrderService {
      * @throws com.example.orderservice.exception.CourierAssignmentException if courier-service rejects the reservation
      */
     OrderResponse assignOrder(Long id, Long courierId);
+
+    /**
+     * Reverts a courier assignment - called only by courier-service (via the internal,
+     * shared-secret-protected endpoint) when a courier rejects an assignment or its
+     * offer-timeout sweep gives up on one unanswered. Moves the order back to
+     * {@code CREATED} with no courier attached, i.e. back in the admin queue - never
+     * auto-reassigned. A no-op (not an error) if the order is no longer {@code ASSIGNED}
+     * to that exact courier - e.g. a retried call after a prior attempt already succeeded,
+     * or the admin already reassigned it to someone else in the meantime.
+     *
+     * @param id the unique identifier of the order
+     * @param request carries the courier being unassigned, for ownership verification
+     * @return an {@link OrderResponse} confirming the (possibly no-op) result
+     */
+    OrderResponse unassignOrder(Long id, UnassignOrderRequest request);
 
     /**
      * Transitions the order to {@code IN_PROGRESS} status and persists the change.

@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -21,20 +23,27 @@ import org.springframework.web.client.RestTemplate;
 @Component
 public class CourierServiceClient {
 
+    private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
+
     private final RestTemplate restTemplate;
     private final String courierServiceBaseUrl;
+    private final String internalServiceToken;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public CourierServiceClient(RestTemplate restTemplate,
-                                 @Value("${services.courier-service.base-url}") String courierServiceBaseUrl) {
+                                 @Value("${services.courier-service.base-url}") String courierServiceBaseUrl,
+                                 @Value("${internal.service-token}") String internalServiceToken) {
         this.restTemplate = restTemplate;
         this.courierServiceBaseUrl = courierServiceBaseUrl;
+        this.internalServiceToken = internalServiceToken;
     }
 
     public CourierReservationResult reserveCourier(Long courierId, Long orderId) {
         String url = courierServiceBaseUrl + "/courier/" + courierId + "/reserve/" + orderId;
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(INTERNAL_TOKEN_HEADER, internalServiceToken);
         try {
-            return restTemplate.exchange(url, HttpMethod.PUT, null, CourierReservationResult.class).getBody();
+            return restTemplate.exchange(url, HttpMethod.PUT, new HttpEntity<>(headers), CourierReservationResult.class).getBody();
         } catch (HttpStatusCodeException ex) {
             log.warn("Courier reservation rejected for courierId={}, orderId={}: {}",
                     courierId, orderId, ex.getResponseBodyAsString());

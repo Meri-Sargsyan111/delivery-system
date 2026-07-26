@@ -1,12 +1,15 @@
 package com.example.orderservice.service.impl;
 
+import com.example.orderservice.client.AuthServiceClient;
 import com.example.orderservice.client.CourierReservationResult;
 import com.example.orderservice.client.CourierServiceClient;
 import com.example.orderservice.client.CustomerLookupResult;
+import com.example.orderservice.dto.CreateOrderFromPaymentRequest;
 import com.example.orderservice.dto.CreateOrderRequest;
 import com.example.orderservice.dto.DeliveryOrderResponse;
 import com.example.orderservice.dto.OrderResponse;
 import com.example.orderservice.dto.OrderStatusView;
+import com.example.orderservice.dto.UnassignOrderRequest;
 import com.example.orderservice.entity.DeliveryOrder;
 import com.example.orderservice.event.DeliveryUpdateEvent;
 import com.example.orderservice.event.OrderCreatedEvent;
@@ -14,6 +17,7 @@ import com.example.orderservice.exception.EntityNotFoundException;
 import com.example.orderservice.exception.InvalidOrderStateException;
 import com.example.orderservice.mapper.OrderMapper;
 import com.example.orderservice.order.OrderStatus;
+import com.example.orderservice.order.PaymentMethod;
 import com.example.orderservice.repository.DeliveryOrderRepository;
 import com.example.orderservice.security.CurrentUser;
 import com.example.orderservice.service.OrderService;
@@ -45,21 +49,17 @@ public class OrderServiceImpl implements OrderService {
     private final CourierServiceClient courierServiceClient;
     private final OrderCustomerResolver orderCustomerResolver;
     private final CurrentUser currentUser;
+    private final VehicleRecommender vehicleRecommender;
+    private final AuthServiceClient authServiceClient;
 
     @Override
     public OrderResponse createOrder(CreateOrderRequest request) {
-        try {
-            DeliveryOrder order = buildNewOrder(request);
-            orderRepository.save(order);
-            publishOrderCreatedEvent(order);
+        DeliveryOrder order = buildNewOrder(request);
+        orderRepository.save(order);
+        publishOrderCreatedEvent(order);
 
-            log.info("Order {} created and published to Kafka", order.getId());
-            return new OrderResponse(order.getId(), "Order created");
-
-        } catch (Exception e) {
-            log.error("Failed to create order", e);
-            throw e;
-        }
+        log.info("Order {} created", order.getId());
+        return new OrderResponse(order.getId(), "Order created");
     }
 
     private DeliveryOrder buildNewOrder(CreateOrderRequest request) {
@@ -69,16 +69,69 @@ public class OrderServiceImpl implements OrderService {
         order.setStatus(OrderStatus.CREATED);
         order.setCustomerUserId(customer.id());
         order.setCustomerName((customer.firstName() + " " + customer.lastName()).trim());
+        order.setCustomerPhone(customer.phoneNumber());
+        order.setRecommendedVehicle(
+                vehicleRecommender.recommend(order.getWeightKg(), order.getPackageDescription()));
         return order;
     }
 
+    /**
+     * Called only via POST /orders/internal/from-payment (see InternalServiceTokenFilter)
+     * after payment-service has verified a payment as SUCCEEDED. Idempotent on paymentId -
+     * a retried call (payment-service's own inline retry, or its reconciliation sweep
+     * racing a not-yet-committed prior attempt) finds the existing order and returns it
+     * rather than creating a duplicate, independent of payment-service's own claim logic.
+     */
+    @Override
+    public OrderResponse createOrderFromPayment(CreateOrderFromPaymentRequest request) {
+        DeliveryOrder existing = orderRepository.findBySourcePaymentId(request.getPaymentId()).orElse(null);
+        if (existing != null) {
+            log.info("Order {} already exists for paymentId={}, returning existing order", existing.getId(), request.getPaymentId());
+            return new OrderResponse(existing.getId(), "Order already exists for this payment");
+        }
+
+        CustomerLookupResult customer = authServiceClient.getCustomerById(request.getCustomerId());
+
+        DeliveryOrder order = new DeliveryOrder();
+        order.setFromAddress(request.getFromAddress());
+        order.setToAddress(request.getToAddress());
+        order.setPackageDescription(request.getPackageDescription());
+        order.setWeightKg(request.getWeightKg());
+        order.setStatus(OrderStatus.CREATED);
+        order.setCustomerUserId(customer.id());
+        order.setCustomerName((customer.firstName() + " " + customer.lastName()).trim());
+        order.setCustomerPhone(customer.phoneNumber());
+        order.setPaymentMethod(PaymentMethod.CARD);
+        order.setRecommendedVehicle(vehicleRecommender.recommend(order.getWeightKg(), order.getPackageDescription()));
+        order.setSourcePaymentId(request.getPaymentId());
+
+        orderRepository.save(order);
+        publishOrderCreatedEvent(order);
+
+        log.info("Order {} created from paymentId={}", order.getId(), request.getPaymentId());
+        return new OrderResponse(order.getId(), "Order created");
+    }
+
+    /**
+     * Best-effort: the order row is already committed by the time this runs, so a
+     * Kafka outage must not fail the request - doing so would report "order failed"
+     * for an order that actually exists, inviting the customer to retry and create a
+     * duplicate. tracking/notification/chat simply won't learn about this order until
+     * it's manually reconciled; that's an existing-data gap either way this failure is
+     * handled, not something recoverable from here.
+     */
     private void publishOrderCreatedEvent(DeliveryOrder order) {
-        kafkaTemplate.send("new-orders",
-                new OrderCreatedEvent(
-                        order.getId(),
-                        order.getCustomerName(),
-                        order.getToAddress(),
-                        order.getCustomerUserId()));
+        try {
+            kafkaTemplate.send("new-orders",
+                    new OrderCreatedEvent(
+                            order.getId(),
+                            order.getCustomerName(),
+                            order.getFromAddress(),
+                            order.getToAddress(),
+                            order.getCustomerUserId()));
+        } catch (Exception e) {
+            log.error("Order {} was created but publishing to Kafka failed", order.getId(), e);
+        }
     }
 
     @Override
@@ -142,6 +195,24 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    public OrderResponse unassignOrder(Long id, UnassignOrderRequest request) {
+        DeliveryOrder order = findOrder(id);
+
+        if (order.getStatus() != OrderStatus.ASSIGNED || !request.getCourierId().equals(order.getCourierId())) {
+            log.info("Order {} unassign ignored - not currently ASSIGNED to courier {} (status={}, courierId={})",
+                    id, request.getCourierId(), order.getStatus(), order.getCourierId());
+            return new OrderResponse(order.getId(), "Order unassign ignored - no matching outstanding assignment");
+        }
+
+        order.setStatus(OrderStatus.CREATED);
+        order.setCourierId(null);
+        order.setCourierUserId(null);
+        orderRepository.save(order);
+        log.info("Order {} unassigned from courier {} - status reverted to CREATED", id, request.getCourierId());
+        return new OrderResponse(order.getId(), "Order unassigned");
+    }
+
+    @Override
     public void startProgress(Long id) {
         DeliveryOrder order = findOrder(id);
 
@@ -195,10 +266,15 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private void publishCancelledDeliveryUpdate(DeliveryOrder order) {
-        deliveryUpdateKafkaTemplate.send("delivery-updates",
-                new DeliveryUpdateEvent(order.getId(), null, "CANCELLED", null));
-        log.info("Published CANCELLED delivery update for order {} to free courier {}",
-                order.getId(), order.getCourierId());
+        try {
+            deliveryUpdateKafkaTemplate.send("delivery-updates",
+                    new DeliveryUpdateEvent(order.getId(), null, "CANCELLED", null));
+            log.info("Published CANCELLED delivery update for order {} to free courier {}",
+                    order.getId(), order.getCourierId());
+        } catch (Exception e) {
+            log.error("Order {} was cancelled but publishing the CANCELLED delivery update failed - " +
+                    "the assigned courier's status was not freed by this event", order.getId(), e);
+        }
     }
 
     private DeliveryOrder findOrder(Long id) {

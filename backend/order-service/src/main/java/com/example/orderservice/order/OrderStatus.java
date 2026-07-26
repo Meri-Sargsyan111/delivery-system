@@ -7,4 +7,3 @@ package com.example.orderservice.order;
         DELIVERED,
         CANCELLED
     }
-

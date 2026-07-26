@@ -11,17 +11,9 @@ public interface OrderMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "status", ignore = true)
-    @Mapping(target = "customerPhone", expression = "java(trim(request.getCustomerPhone()))")
+    @Mapping(target = "customerPhone", ignore = true)
+    @Mapping(target = "recommendedVehicle", ignore = true)
     DeliveryOrder toEntity(CreateOrderRequest request);
 
     DeliveryOrderResponse toResponse(DeliveryOrder order);
-
-    /**
-     * Trims only surrounding whitespace, preserving internal formatting
-     * (e.g. "+1 202 555 0123" keeps its spaces) since this project has no
-     * other phone-normalization convention to follow.
-     */
-    default String trim(String value) {
-        return value == null ? null : value.trim();
-    }
 }

@@ -13,6 +13,7 @@ public class OrderCreatedEvent {
 
     private Long orderId;
     private String customerName;
+    private String fromAddress;
     private String toAddress;
 
     /** The owning customer's auth-service user id, for downstream ownership projections. */

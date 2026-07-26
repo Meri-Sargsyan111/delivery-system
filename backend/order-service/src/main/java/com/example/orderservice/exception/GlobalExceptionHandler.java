@@ -45,6 +45,13 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(ex.getStatus(), ex.getMessage(), request);
     }
 
+    @ExceptionHandler(CustomerServiceUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleCustomerServiceUnavailableException(
+            CustomerServiceUnavailableException ex, HttpServletRequest request) {
+
+        return buildErrorResponse(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage(), request);
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ErrorResponse> handleIllegalArgumentException(
             IllegalArgumentException ex, HttpServletRequest request) {

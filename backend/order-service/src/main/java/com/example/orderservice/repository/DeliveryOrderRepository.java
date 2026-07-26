@@ -6,6 +6,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
+import java.util.Optional;
 import java.util.UUID;
 
 public interface DeliveryOrderRepository extends JpaRepository<DeliveryOrder, Long>,
@@ -14,4 +15,6 @@ public interface DeliveryOrderRepository extends JpaRepository<DeliveryOrder, Lo
     Page<DeliveryOrder> findByCustomerUserId(UUID customerUserId, Pageable pageable);
 
     Page<DeliveryOrder> findByCourierUserId(UUID courierUserId, Pageable pageable);
+
+    Optional<DeliveryOrder> findBySourcePaymentId(UUID sourcePaymentId);
 }

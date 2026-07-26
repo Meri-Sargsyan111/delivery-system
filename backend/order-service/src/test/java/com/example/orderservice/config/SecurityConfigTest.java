@@ -115,7 +115,7 @@ class SecurityConfigTest {
 
         mockMvc.perform(post("/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"customerId\":\"" + UUID.randomUUID() + "\",\"fromAddress\":\"a\",\"toAddress\":\"b\",\"customerPhone\":\"+37411100000\"}")
+                        .content("{\"customerId\":\"" + UUID.randomUUID() + "\",\"fromAddress\":\"a\",\"toAddress\":\"b\",\"customerPhone\":\"+37411100000\",\"weightKg\":5,\"paymentMethod\":\"CASH\"}")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_COURIER"))))
                 .andExpect(status().isForbidden());
     }
@@ -126,19 +126,17 @@ class SecurityConfigTest {
 
         mockMvc.perform(post("/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"customerId\":\"" + UUID.randomUUID() + "\",\"fromAddress\":\"a\",\"toAddress\":\"b\",\"customerPhone\":\"+37411100000\"}")
+                        .content("{\"customerId\":\"" + UUID.randomUUID() + "\",\"fromAddress\":\"a\",\"toAddress\":\"b\",\"customerPhone\":\"+37411100000\",\"weightKg\":5,\"paymentMethod\":\"CASH\"}")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_CUSTOMER"))))
                 .andExpect(status().isCreated());
     }
 
     @Test
-    void createOrder_withAdminRole_reachesController() throws Exception {
-        when(orderService.createOrder(any())).thenReturn(new OrderResponse(1L, "Order created"));
-
+    void createOrder_withAdminRole_returns403() throws Exception {
         mockMvc.perform(post("/orders")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"customerId\":\"" + UUID.randomUUID() + "\",\"fromAddress\":\"a\",\"toAddress\":\"b\",\"customerPhone\":\"+37411100000\"}")
+                        .content("{\"customerId\":\"" + UUID.randomUUID() + "\",\"fromAddress\":\"a\",\"toAddress\":\"b\",\"customerPhone\":\"+37411100000\",\"weightKg\":5,\"paymentMethod\":\"CASH\"}")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_ADMIN"))))
-                .andExpect(status().isCreated());
+                .andExpect(status().isForbidden());
     }
 }

@@ -1,5 +1,6 @@
 package com.example.orderservice.service;
 
+import com.example.orderservice.client.AuthServiceClient;
 import com.example.orderservice.client.CourierReservationResult;
 import com.example.orderservice.client.CourierServiceClient;
 import com.example.orderservice.client.CustomerLookupResult;
@@ -7,6 +8,7 @@ import com.example.orderservice.dto.CreateOrderRequest;
 import com.example.orderservice.dto.DeliveryOrderResponse;
 import com.example.orderservice.dto.OrderResponse;
 import com.example.orderservice.dto.OrderStatusView;
+import com.example.orderservice.dto.UnassignOrderRequest;
 import com.example.orderservice.entity.DeliveryOrder;
 import com.example.orderservice.event.DeliveryUpdateEvent;
 import com.example.orderservice.event.OrderCreatedEvent;
@@ -19,6 +21,7 @@ import com.example.orderservice.repository.DeliveryOrderRepository;
 import com.example.orderservice.security.CurrentUser;
 import com.example.orderservice.service.impl.OrderCustomerResolver;
 import com.example.orderservice.service.impl.OrderServiceImpl;
+import com.example.orderservice.service.impl.VehicleRecommender;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -69,13 +72,16 @@ class OrderServiceImplTest {
     @Mock private CourierServiceClient courierServiceClient;
     @Mock private OrderCustomerResolver orderCustomerResolver;
     @Mock private CurrentUser currentUser;
+    @Mock private VehicleRecommender vehicleRecommender;
+    @Mock private AuthServiceClient authServiceClient;
 
     private OrderServiceImpl orderService;
 
     @BeforeEach
     void setUp() {
         orderService = new OrderServiceImpl(orderRepository, kafkaTemplate, deliveryUpdateKafkaTemplate,
-                orderMapper, courierServiceClient, orderCustomerResolver, currentUser);
+                orderMapper, courierServiceClient, orderCustomerResolver, currentUser, vehicleRecommender,
+                authServiceClient);
         asAdmin();
     }
 
@@ -106,11 +112,11 @@ class OrderServiceImplTest {
     @Test
     void createOrder_validRequest_persistsWithCreatedStatusAndOwnerFromResolvedCustomerAndPublishesToKafka() {
         asCustomer(CUSTOMER_ID);
-        CreateOrderRequest request = new CreateOrderRequest(null, "From St", "To St", "+37499123456");
-        DeliveryOrder entity = new DeliveryOrder(1L, null, "From St", "To St", null, null, "+37499123456", null, null);
+        CreateOrderRequest request = new CreateOrderRequest(null, "From St", "To St", null, null, null);
+        DeliveryOrder entity = new DeliveryOrder(1L, null, "From St", "To St", null, null, "+37499123456", null, null, null, null, null, null);
 
         when(orderCustomerResolver.resolve(request))
-                .thenReturn(new CustomerLookupResult(CUSTOMER_ID, "John", "Doe"));
+                .thenReturn(new CustomerLookupResult(CUSTOMER_ID, "John", "Doe", "+37499123456"));
         when(orderMapper.toEntity(request)).thenReturn(entity);
         when(orderRepository.save(entity)).thenReturn(entity);
 
@@ -128,11 +134,11 @@ class OrderServiceImplTest {
 
     @Test
     void createOrder_asAdmin_usesCustomerResolvedByOrderCustomerResolverAsOwner() {
-        CreateOrderRequest request = new CreateOrderRequest(CUSTOMER_ID, "From St", "To St", "+37499123456");
-        DeliveryOrder entity = new DeliveryOrder(1L, null, "From St", "To St", null, null, "+37499123456", null, null);
+        CreateOrderRequest request = new CreateOrderRequest(CUSTOMER_ID, "From St", "To St", null, null, null);
+        DeliveryOrder entity = new DeliveryOrder(1L, null, "From St", "To St", null, null, "+37499123456", null, null, null, null, null, null);
 
         when(orderCustomerResolver.resolve(request))
-                .thenReturn(new CustomerLookupResult(CUSTOMER_ID, "Jane", "Smith"));
+                .thenReturn(new CustomerLookupResult(CUSTOMER_ID, "Jane", "Smith", "+37499123456"));
         when(orderMapper.toEntity(request)).thenReturn(entity);
         when(orderRepository.save(entity)).thenReturn(entity);
 
@@ -145,7 +151,7 @@ class OrderServiceImplTest {
 
     @Test
     void createOrder_whenCustomerResolutionFails_propagatesExceptionAndSkipsSave() {
-        CreateOrderRequest request = new CreateOrderRequest(CUSTOMER_ID, "From St", "To St", "+37499123456");
+        CreateOrderRequest request = new CreateOrderRequest(CUSTOMER_ID, "From St", "To St", null, null, null);
 
         when(orderCustomerResolver.resolve(request))
                 .thenThrow(new EntityNotFoundException("Customer not found with id: " + CUSTOMER_ID));
@@ -159,11 +165,11 @@ class OrderServiceImplTest {
 
     @Test
     void createOrder_whenRepositoryThrows_rethrowsExceptionAndSkipsKafka() {
-        CreateOrderRequest request = new CreateOrderRequest(CUSTOMER_ID, "From St", "To St", "+37499123456");
-        DeliveryOrder entity = new DeliveryOrder(null, null, "From St", "To St", null, null, "+37499123456", null, null);
+        CreateOrderRequest request = new CreateOrderRequest(CUSTOMER_ID, "From St", "To St", null, null, null);
+        DeliveryOrder entity = new DeliveryOrder(null, null, "From St", "To St", null, null, "+37499123456", null, null, null, null, null, null);
 
         when(orderCustomerResolver.resolve(request))
-                .thenReturn(new CustomerLookupResult(CUSTOMER_ID, "John", "Doe"));
+                .thenReturn(new CustomerLookupResult(CUSTOMER_ID, "John", "Doe", "+37499123456"));
         when(orderMapper.toEntity(request)).thenReturn(entity);
         when(orderRepository.save(entity)).thenThrow(new RuntimeException("DB unavailable"));
 
@@ -177,8 +183,8 @@ class OrderServiceImplTest {
     @Test
     void getOrders_asAdmin_returnsAllOrders() {
         Pageable pageable = PageRequest.of(0, 20);
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", null, null);
-        DeliveryOrderResponse response = new DeliveryOrderResponse(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456");
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", null, null, null, null, null, null);
+        DeliveryOrderResponse response = new DeliveryOrderResponse(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", null, null, null, null);
         when(orderRepository.findAll(pageable)).thenReturn(new PageImpl<>(List.of(order)));
         when(orderMapper.toResponse(order)).thenReturn(response);
 
@@ -218,8 +224,8 @@ class OrderServiceImplTest {
 
     @Test
     void getOrderById_whenOrderExists_returnsOrder() {
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", null, null);
-        DeliveryOrderResponse response = new DeliveryOrderResponse(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456");
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", null, null, null, null, null, null);
+        DeliveryOrderResponse response = new DeliveryOrderResponse(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(orderMapper.toResponse(order)).thenReturn(response);
 
@@ -240,8 +246,8 @@ class OrderServiceImplTest {
     @Test
     void getOrderById_asOwningCustomer_returnsOrder() {
         asCustomer(CUSTOMER_ID);
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null);
-        DeliveryOrderResponse response = new DeliveryOrderResponse(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456");
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null, null, null, null, null);
+        DeliveryOrderResponse response = new DeliveryOrderResponse(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(orderMapper.toResponse(order)).thenReturn(response);
 
@@ -251,7 +257,7 @@ class OrderServiceImplTest {
     @Test
     void getOrderById_asUnrelatedCustomer_throwsAccessDenied() {
         asCustomer(OTHER_CUSTOMER_ID);
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.getOrderById(1L))
@@ -261,8 +267,8 @@ class OrderServiceImplTest {
     @Test
     void getOrderById_asAssignedCourier_returnsOrder() {
         asCourier(COURIER_USER_ID);
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
-        DeliveryOrderResponse response = new DeliveryOrderResponse(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456");
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
+        DeliveryOrderResponse response = new DeliveryOrderResponse(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(orderMapper.toResponse(order)).thenReturn(response);
 
@@ -272,7 +278,7 @@ class OrderServiceImplTest {
     @Test
     void getOrderById_asUnrelatedCourier_throwsAccessDenied() {
         asCourier(OTHER_COURIER_USER_ID);
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.getOrderById(1L))
@@ -281,7 +287,7 @@ class OrderServiceImplTest {
 
     @Test
     void getOrderById_legacyOrderWithNoOwner_isNotAccessibleByCustomerOrCourier() {
-        DeliveryOrder legacyOrder = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, null, null, null);
+        DeliveryOrder legacyOrder = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, null, null, null, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(legacyOrder));
 
         asCustomer(CUSTOMER_ID);
@@ -294,7 +300,7 @@ class OrderServiceImplTest {
     @Test
     void getOrderByIdInternal_returnsStatusProjectionWithNoOwnershipCheck() {
         asCustomer(OTHER_CUSTOMER_ID);
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
         OrderStatusView result = orderService.getOrderByIdInternal(1L);
@@ -343,7 +349,7 @@ class OrderServiceImplTest {
 
     @Test
     void assignOrder_whenCreatedAndCourierReserved_changesStatusToAssignedAndPersistsCourierIdentifiers() {
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(orderRepository.save(order)).thenReturn(order);
         when(courierServiceClient.reserveCourier(5L, 1L)).thenReturn(new CourierReservationResult(5L, COURIER_USER_ID));
@@ -373,7 +379,7 @@ class OrderServiceImplTest {
 
     @Test
     void assignOrder_whenOrderAlreadyAssigned_throwsInvalidOrderStateAndSkipsCourierReservation() {
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 3L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 3L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.assignOrder(1L, 5L))
@@ -385,7 +391,7 @@ class OrderServiceImplTest {
 
     @Test
     void assignOrder_whenOrderDelivered_throwsInvalidOrderState() {
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.DELIVERED, 3L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.DELIVERED, 3L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.assignOrder(1L, 5L))
@@ -396,7 +402,7 @@ class OrderServiceImplTest {
 
     @Test
     void assignOrder_whenOrderCancelled_throwsInvalidOrderState() {
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CANCELLED, null, "+37499123456", CUSTOMER_ID, null);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CANCELLED, null, "+37499123456", CUSTOMER_ID, null, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.assignOrder(1L, 5L))
@@ -406,8 +412,47 @@ class OrderServiceImplTest {
     }
 
     @Test
+    void unassignOrder_whenAssignedToMatchingCourier_revertsToCreatedAndClearsCourier() {
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+        when(orderRepository.save(order)).thenReturn(order);
+
+        OrderResponse response = orderService.unassignOrder(1L, new UnassignOrderRequest(5L));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CREATED);
+        assertThat(order.getCourierId()).isNull();
+        assertThat(order.getCourierUserId()).isNull();
+        assertThat(response.getId()).isEqualTo(1L);
+        verify(orderRepository).save(order);
+    }
+
+    @Test
+    void unassignOrder_whenCourierIdDoesNotMatch_isNoOpAndDoesNotMutateOrder() {
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+        orderService.unassignOrder(1L, new UnassignOrderRequest(99L));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.ASSIGNED);
+        assertThat(order.getCourierId()).isEqualTo(5L);
+        verify(orderRepository, never()).save(any());
+    }
+
+    @Test
+    void unassignOrder_whenOrderAlreadyInProgress_isNoOpAndDoesNotMutateOrder() {
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.IN_PROGRESS, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
+        when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
+
+        orderService.unassignOrder(1L, new UnassignOrderRequest(5L));
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.IN_PROGRESS);
+        assertThat(order.getCourierId()).isEqualTo(5L);
+        verify(orderRepository, never()).save(any());
+    }
+
+    @Test
     void assignOrder_whenCourierNotAvailable_propagatesExceptionAndDoesNotChangeOrder() {
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         doThrow(new CourierAssignmentException(HttpStatus.CONFLICT, "Courier 5 is not available"))
                 .when(courierServiceClient).reserveCourier(5L, 1L);
@@ -421,7 +466,7 @@ class OrderServiceImplTest {
 
     @Test
     void startProgress_whenAssigned_changesStatusToInProgress() {
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(orderRepository.save(order)).thenReturn(order);
 
@@ -435,7 +480,7 @@ class OrderServiceImplTest {
     void startProgress_calledFromUnauthenticatedKafkaConsumerContext_stillWorks() {
 
         lenient().when(currentUser.isAuthenticated()).thenReturn(false);
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(orderRepository.save(order)).thenReturn(order);
 
@@ -446,7 +491,7 @@ class OrderServiceImplTest {
 
     @Test
     void startProgress_whenNotAssigned_throwsInvalidOrderState() {
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.startProgress(1L))
@@ -457,7 +502,7 @@ class OrderServiceImplTest {
 
     @Test
     void deliverOrder_whenAssigned_changesStatusToDeliveredAndPersists() {
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(orderRepository.save(order)).thenReturn(order);
 
@@ -472,7 +517,7 @@ class OrderServiceImplTest {
     @Test
     void deliverOrder_asAssignedCourier_succeeds() {
         asCourier(COURIER_USER_ID);
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(orderRepository.save(order)).thenReturn(order);
 
@@ -484,7 +529,7 @@ class OrderServiceImplTest {
     @Test
     void deliverOrder_asUnrelatedCourier_throwsAccessDenied() {
         asCourier(OTHER_COURIER_USER_ID);
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.deliverOrder(1L))
@@ -496,7 +541,7 @@ class OrderServiceImplTest {
     @Test
     void deliverOrder_asUnrelatedCustomer_throwsAccessDenied() {
         asCustomer(OTHER_CUSTOMER_ID);
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.deliverOrder(1L))
@@ -506,7 +551,7 @@ class OrderServiceImplTest {
     @Test
     void deliverOrder_calledFromUnauthenticatedKafkaConsumerContext_stillWorks() {
         lenient().when(currentUser.isAuthenticated()).thenReturn(false);
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(orderRepository.save(order)).thenReturn(order);
 
@@ -517,7 +562,7 @@ class OrderServiceImplTest {
 
     @Test
     void deliverOrder_whenInProgress_changesStatusToDelivered() {
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.IN_PROGRESS, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.IN_PROGRESS, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(orderRepository.save(order)).thenReturn(order);
 
@@ -537,7 +582,7 @@ class OrderServiceImplTest {
 
     @Test
     void deliverOrder_whenStillCreated_throwsInvalidOrderState() {
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.deliverOrder(1L))
@@ -548,7 +593,7 @@ class OrderServiceImplTest {
 
     @Test
     void deliverOrder_whenAlreadyCancelled_throwsInvalidOrderState() {
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CANCELLED, null, "+37499123456", CUSTOMER_ID, null);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CANCELLED, null, "+37499123456", CUSTOMER_ID, null, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.deliverOrder(1L))
@@ -557,7 +602,7 @@ class OrderServiceImplTest {
 
     @Test
     void cancelOrder_whenCreated_changesStatusToCancelledAndSkipsKafka() {
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(orderRepository.save(order)).thenReturn(order);
 
@@ -573,7 +618,7 @@ class OrderServiceImplTest {
     @Test
     void cancelOrder_asOwningCustomer_succeeds() {
         asCustomer(CUSTOMER_ID);
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(orderRepository.save(order)).thenReturn(order);
 
@@ -585,7 +630,7 @@ class OrderServiceImplTest {
     @Test
     void cancelOrder_asUnrelatedCustomer_throwsAccessDenied() {
         asCustomer(OTHER_CUSTOMER_ID);
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.CREATED, null, "+37499123456", CUSTOMER_ID, null, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.cancelOrder(1L))
@@ -597,7 +642,7 @@ class OrderServiceImplTest {
     @Test
     void cancelOrder_asCourier_throwsAccessDeniedEvenIfAssigned() {
         asCourier(COURIER_USER_ID);
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.cancelOrder(1L))
@@ -606,7 +651,7 @@ class OrderServiceImplTest {
 
     @Test
     void cancelOrder_whenAssigned_publishesCancelledEventToFreeCourier() {
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.ASSIGNED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
         when(orderRepository.save(order)).thenReturn(order);
 
@@ -630,12 +675,60 @@ class OrderServiceImplTest {
 
     @Test
     void cancelOrder_whenAlreadyDelivered_throwsInvalidOrderState() {
-        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.DELIVERED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID);
+        DeliveryOrder order = new DeliveryOrder(1L, "John", "A", "B", OrderStatus.DELIVERED, 5L, "+37499123456", CUSTOMER_ID, COURIER_USER_ID, null, null, null, null);
         when(orderRepository.findById(1L)).thenReturn(Optional.of(order));
 
         assertThatThrownBy(() -> orderService.cancelOrder(1L))
                 .isInstanceOf(InvalidOrderStateException.class);
 
         verify(orderRepository, never()).save(any());
+    }
+
+    @Test
+    void createOrderFromPayment_newPayment_createsOrderWithCardPaymentMethodAndSourcePaymentId() {
+        UUID paymentId = UUID.randomUUID();
+        com.example.orderservice.dto.CreateOrderFromPaymentRequest request =
+                new com.example.orderservice.dto.CreateOrderFromPaymentRequest(
+                        CUSTOMER_ID, paymentId, "From St", "To St", "Box", 2.5);
+
+        when(orderRepository.findBySourcePaymentId(paymentId)).thenReturn(Optional.empty());
+        when(authServiceClient.getCustomerById(CUSTOMER_ID))
+                .thenReturn(new CustomerLookupResult(CUSTOMER_ID, "John", "Doe", "+37499123456"));
+        when(orderRepository.save(any(DeliveryOrder.class))).thenAnswer(invocation -> {
+            DeliveryOrder saved = invocation.getArgument(0);
+            saved.setId(7L);
+            return saved;
+        });
+
+        OrderResponse response = orderService.createOrderFromPayment(request);
+
+        assertThat(response.getId()).isEqualTo(7L);
+        ArgumentCaptor<DeliveryOrder> captor = ArgumentCaptor.forClass(DeliveryOrder.class);
+        verify(orderRepository).save(captor.capture());
+        DeliveryOrder saved = captor.getValue();
+        assertThat(saved.getSourcePaymentId()).isEqualTo(paymentId);
+        assertThat(saved.getPaymentMethod()).isEqualTo(com.example.orderservice.order.PaymentMethod.CARD);
+        assertThat(saved.getStatus()).isEqualTo(OrderStatus.CREATED);
+        assertThat(saved.getCustomerUserId()).isEqualTo(CUSTOMER_ID);
+        verify(kafkaTemplate).send(eq("new-orders"), any(OrderCreatedEvent.class));
+    }
+
+    @Test
+    void createOrderFromPayment_repeatedCallForSamePaymentId_returnsExistingOrderWithoutCreatingDuplicate() {
+        UUID paymentId = UUID.randomUUID();
+        com.example.orderservice.dto.CreateOrderFromPaymentRequest request =
+                new com.example.orderservice.dto.CreateOrderFromPaymentRequest(
+                        CUSTOMER_ID, paymentId, "From St", "To St", "Box", 2.5);
+        DeliveryOrder existing = new DeliveryOrder(9L, "John Doe", "From St", "To St", OrderStatus.CREATED,
+                null, "+37499123456", CUSTOMER_ID, null, "Box", 2.5, com.example.orderservice.order.PaymentMethod.CARD, null, paymentId);
+
+        when(orderRepository.findBySourcePaymentId(paymentId)).thenReturn(Optional.of(existing));
+
+        OrderResponse response = orderService.createOrderFromPayment(request);
+
+        assertThat(response.getId()).isEqualTo(9L);
+        verify(orderRepository, never()).save(any());
+        verify(authServiceClient, never()).getCustomerById(any());
+        verify(kafkaTemplate, never()).send(eq("new-orders"), any());
     }
 }

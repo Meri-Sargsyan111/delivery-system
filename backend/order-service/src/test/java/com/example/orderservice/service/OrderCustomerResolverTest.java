@@ -46,8 +46,8 @@ class OrderCustomerResolverTest {
     void resolve_asCustomer_ignoresProvidedCustomerIdAndUsesAuthenticatedIdentity() {
         when(currentUser.isAdmin()).thenReturn(false);
         when(currentUser.getUserId()).thenReturn(CUSTOMER_ID);
-        CreateOrderRequest request = new CreateOrderRequest(OTHER_CUSTOMER_ID, "From St", "To St", "+37499123456");
-        CustomerLookupResult expected = new CustomerLookupResult(CUSTOMER_ID, "John", "Doe");
+        CreateOrderRequest request = new CreateOrderRequest(OTHER_CUSTOMER_ID, "From St", "To St", null, null, null);
+        CustomerLookupResult expected = new CustomerLookupResult(CUSTOMER_ID, "John", "Doe", "+37499123456");
         when(authServiceClient.getCustomerById(CUSTOMER_ID)).thenReturn(expected);
 
         CustomerLookupResult result = resolver.resolve(request);
@@ -61,8 +61,8 @@ class OrderCustomerResolverTest {
     void resolve_asCustomer_withNoCustomerIdInRequest_stillResolvesOwnIdentity() {
         when(currentUser.isAdmin()).thenReturn(false);
         when(currentUser.getUserId()).thenReturn(CUSTOMER_ID);
-        CreateOrderRequest request = new CreateOrderRequest(null, "From St", "To St", "+37499123456");
-        CustomerLookupResult expected = new CustomerLookupResult(CUSTOMER_ID, "John", "Doe");
+        CreateOrderRequest request = new CreateOrderRequest(null, "From St", "To St", null, null, null);
+        CustomerLookupResult expected = new CustomerLookupResult(CUSTOMER_ID, "John", "Doe", "+37499123456");
         when(authServiceClient.getCustomerById(CUSTOMER_ID)).thenReturn(expected);
 
         CustomerLookupResult result = resolver.resolve(request);
@@ -73,8 +73,8 @@ class OrderCustomerResolverTest {
     @Test
     void resolve_asAdmin_resolvesThePickedCustomerId() {
         when(currentUser.isAdmin()).thenReturn(true);
-        CreateOrderRequest request = new CreateOrderRequest(OTHER_CUSTOMER_ID, "From St", "To St", "+37499123456");
-        CustomerLookupResult expected = new CustomerLookupResult(OTHER_CUSTOMER_ID, "Jane", "Smith");
+        CreateOrderRequest request = new CreateOrderRequest(OTHER_CUSTOMER_ID, "From St", "To St", null, null, null);
+        CustomerLookupResult expected = new CustomerLookupResult(OTHER_CUSTOMER_ID, "Jane", "Smith", "+37499123456");
         when(authServiceClient.getCustomerById(OTHER_CUSTOMER_ID)).thenReturn(expected);
 
         CustomerLookupResult result = resolver.resolve(request);
@@ -86,7 +86,7 @@ class OrderCustomerResolverTest {
     @Test
     void resolve_asAdmin_withoutCustomerId_throwsIllegalArgumentExceptionAndSkipsLookup() {
         when(currentUser.isAdmin()).thenReturn(true);
-        CreateOrderRequest request = new CreateOrderRequest(null, "From St", "To St", "+37499123456");
+        CreateOrderRequest request = new CreateOrderRequest(null, "From St", "To St", null, null, null);
 
         assertThatThrownBy(() -> resolver.resolve(request))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -97,7 +97,7 @@ class OrderCustomerResolverTest {
     @Test
     void resolve_asAdmin_whenPickedCustomerDoesNotExist_propagatesEntityNotFoundException() {
         when(currentUser.isAdmin()).thenReturn(true);
-        CreateOrderRequest request = new CreateOrderRequest(OTHER_CUSTOMER_ID, "From St", "To St", "+37499123456");
+        CreateOrderRequest request = new CreateOrderRequest(OTHER_CUSTOMER_ID, "From St", "To St", null, null, null);
         when(authServiceClient.getCustomerById(OTHER_CUSTOMER_ID))
                 .thenThrow(new EntityNotFoundException("Customer not found with id: " + OTHER_CUSTOMER_ID));
 

@@ -19,12 +19,29 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        # Default is 60s: send() blocks the calling request thread for that long
+        # before failing when the broker is unreachable. Publish failures are already
+        # caught and logged as best-effort (see OrderServiceImpl), so this just bounds
+        # how long a Kafka outage can make an otherwise-successful request hang.
+        max.block.ms: 5000
 
 server:
   port: 8081
+
+http-client:
+  connect-timeout-ms: ${ORDER_HTTP_CONNECT_TIMEOUT_MS:3000}
+  read-timeout-ms: ${ORDER_HTTP_READ_TIMEOUT_MS:5000}
 
 services:
   courier-service:
     base-url: ${COURIER_SERVICE_URL:http://localhost:8082}
   auth-service:
     base-url: ${AUTH_SERVICE_URL:http://localhost:8085}
+
+# Presented as X-Internal-Token when calling courier-service's unauthenticated
+# PUT /courier/{courierId}/reserve/{orderId} endpoint - see CourierServiceClient and
+# courier-service's InternalServiceTokenFilter. Must match courier-service's own
+# internal.service-token value.
+internal:
+  service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-service-token-change-me}

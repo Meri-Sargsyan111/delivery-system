@@ -1,10 +1,13 @@
 package com.example.orderservice.client;
 
+import com.example.orderservice.exception.CustomerServiceUnavailableException;
 import com.example.orderservice.exception.EntityNotFoundException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.UUID;
@@ -34,6 +37,14 @@ public class AuthServiceClient {
         } catch (HttpClientErrorException.NotFound ex) {
             log.warn("Customer not found with id: {}", customerId);
             throw new EntityNotFoundException("Customer not found with id: " + customerId);
+        } catch (ResourceAccessException ex) {
+            log.error("auth-service unreachable/timed out while resolving customer {}", customerId, ex);
+            throw new CustomerServiceUnavailableException(
+                    "Unable to verify customer details right now. Please try again shortly.", ex);
+        } catch (HttpClientErrorException | HttpServerErrorException ex) {
+            log.error("auth-service returned {} while resolving customer {}", ex.getStatusCode(), customerId, ex);
+            throw new CustomerServiceUnavailableException(
+                    "Unable to verify customer details right now. Please try again shortly.", ex);
         }
     }
 }

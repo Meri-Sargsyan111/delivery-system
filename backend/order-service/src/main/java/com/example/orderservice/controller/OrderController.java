@@ -1,9 +1,11 @@
 package com.example.orderservice.controller;
 
+import com.example.orderservice.dto.CreateOrderFromPaymentRequest;
 import com.example.orderservice.dto.CreateOrderRequest;
 import com.example.orderservice.dto.DeliveryOrderResponse;
 import com.example.orderservice.dto.OrderResponse;
 import com.example.orderservice.dto.OrderStatusView;
+import com.example.orderservice.dto.UnassignOrderRequest;
 import com.example.orderservice.order.OrderStatus;
 import com.example.orderservice.service.OrderService;
 import jakarta.validation.Valid;
@@ -43,12 +45,25 @@ public class OrderController {
         return ResponseEntity.ok(orderService.getOrderByIdInternal(id));
     }
 
-    @PreAuthorize("hasRole('ADMIN') or hasRole('CUSTOMER')")
+    @PreAuthorize("hasRole('CUSTOMER')")
     @PostMapping
     public ResponseEntity<OrderResponse> createOrder(@Valid @RequestBody CreateOrderRequest request) {
         log.info("POST /orders - received request to create new order");
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(orderService.createOrder(request));
+    }
+
+    /**
+     * Called only by payment-service after a payment has been verified as SUCCEEDED - no
+     * end-user JWT exists on this call path, so this stays outside the normal
+     * @PreAuthorize chain and is instead protected by InternalServiceTokenFilter (see
+     * SecurityConfig). Never intended to be reachable from a browser/API client directly.
+     */
+    @PostMapping("/internal/from-payment")
+    public ResponseEntity<OrderResponse> createOrderFromPayment(@Valid @RequestBody CreateOrderFromPaymentRequest request) {
+        log.info("POST /orders/internal/from-payment - paymentId={}", request.getPaymentId());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(orderService.createOrderFromPayment(request));
     }
 
     @GetMapping
@@ -85,6 +100,20 @@ public class OrderController {
                                                       @RequestParam Long courierId) {
         log.info("PUT /orders/{}/assign - courierId={}", id, courierId);
         return ResponseEntity.ok(orderService.assignOrder(id, courierId));
+    }
+
+    /**
+     * Called only by courier-service - when a courier rejects an assignment, or its
+     * offer-timeout sweep gives up on one unanswered - with no end-user JWT to present
+     * (service-to-service call; the courier's own accept/reject HTTP request already
+     * authenticated against courier-service). Protected by InternalServiceTokenFilter (see
+     * SecurityConfig), same shared secret as every other internal endpoint.
+     */
+    @PutMapping("/internal/{id}/unassign")
+    public ResponseEntity<OrderResponse> unassignOrder(
+            @PathVariable Long id, @Valid @RequestBody UnassignOrderRequest request) {
+        log.info("PUT /orders/internal/{}/unassign - courierId={}", id, request.getCourierId());
+        return ResponseEntity.ok(orderService.unassignOrder(id, request));
     }
 
     @PutMapping("/{id}/deliver")
