@@ -84,12 +84,12 @@ class SecurityConfigTest {
     }
 
     @Test
-    void courierLocationWebSocketHandshakePath_staysPublic() {
-        webTestClient.get().uri("/ws-location")
+    void trackingWebSocketHandshakePath_staysPublic() {
+        webTestClient.get().uri("/ws-tracking")
                 .exchange()
                 .expectStatus().value(status -> {
                     if (status == 401 || status == 403) {
-                        throw new AssertionError("/ws-location must never be blocked by security, got " + status);
+                        throw new AssertionError("/ws-tracking must never be blocked by security, got " + status);
                     }
                 });
     }

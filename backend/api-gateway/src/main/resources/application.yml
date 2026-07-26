@@ -1,3 +1,4 @@
+
 server:
   port: 8080
   # Deployed behind Caddy (see Caddyfile) as the only reverse proxy in front of this
@@ -18,6 +19,9 @@ spring:
 
   cloud:
     gateway:
+      httpclient:
+        connect-timeout: 5000
+        response-timeout: 15s
       routes:
         - id: auth-service
           uri: ${AUTH_SERVICE_URL:http://localhost:8085}
@@ -57,10 +61,13 @@ spring:
           predicates:
             - Path=/ws/**
 
-        - id: courier-location-websocket
-          uri: ${COURIER_SERVICE_URL:http://localhost:8082}
+        # The old global, unauthenticated courier location broadcast (/ws-location) has
+        # been retired - live position now flows through tracking-service's own
+        # per-order, authorization-checked WebSocket topic instead (see below).
+        - id: tracking-websocket
+          uri: ${TRACKING_SERVICE_URL:http://localhost:8083}
           predicates:
-            - Path=/ws-location/**
+            - Path=/ws-tracking/**
 
         - id: chat-service
           uri: ${CHAT_SERVICE_URL:http://localhost:8086}
@@ -71,3 +78,35 @@ spring:
           uri: ${CHAT_SERVICE_URL:http://localhost:8086}
           predicates:
             - Path=/ws-chat/**
+
+        # AiChatController is itself mapped at /api/ai/chat, so this is forwarded as-is
+        # - no rewrite.
+        - id: ai-service-chat
+          uri: ${AI_SERVICE_URL:http://localhost:8087}
+          predicates:
+            - Path=/api/ai/chat
+
+        # EstimateController is mapped at /ai/estimate (not /api/ai/estimate), so a
+        # request under the /api prefix must be rewritten before forwarding. Deliberately
+        # a separate route from ai-service-estimate-direct below - each Path predicate
+        # here matches exactly one real upstream shape, so nothing else needs a rewrite
+        # filter applied "just in case" (RewritePath being a no-op on non-matching paths
+        # was a "combine and hope" approach; this is one route per actual meaning).
+        - id: ai-service-estimate-api
+          uri: ${AI_SERVICE_URL:http://localhost:8087}
+          predicates:
+            - Path=/api/ai/estimate
+          filters:
+            - RewritePath=/api/ai/estimate, /ai/estimate
+
+        # Direct calls to /ai/estimate already match ai-service's real mapping - forward
+        # as-is, no rewrite.
+        - id: ai-service-estimate-direct
+          uri: ${AI_SERVICE_URL:http://localhost:8087}
+          predicates:
+            - Path=/ai/**
+
+        - id: payment-service
+          uri: ${PAYMENT_SERVICE_URL:http://localhost:8088}
+          predicates:
+            - Path=/payments/**

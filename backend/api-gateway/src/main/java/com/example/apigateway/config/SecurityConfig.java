@@ -21,15 +21,21 @@ import java.util.List;
  * Validates the RS256 JWTs already issued by auth-service (via its JWKS endpoint,
  * see application.yml's jwk-set-uri) for every route proxied by the gateway.
  *
- * WebSocket handshake paths (/ws/**, /ws-location/**, /ws-chat/**) are intentionally left
+ * WebSocket handshake paths (/ws/**, /ws-tracking/**, /ws-chat/**) are intentionally left
  * public: browsers cannot attach an Authorization header to a native WebSocket handshake,
- * so requiring a bearer token here would break Live Tracking, Notifications, and Chat
- * outright. For /ws and /ws-location this means the connection itself stays unauthenticated
- * end-to-end (documented limitation - those topics are public broadcasts). /ws-chat is
- * different: chat-service's own ChatChannelInterceptor authenticates the STOMP CONNECT
- * frame (JWT carried as a STOMP header, not an HTTP header, so the gateway's inability to
- * see it here doesn't matter) and authorizes every SUBSCRIBE/SEND against real order
- * participation - see chat-service's WebSocketConfig/ChatChannelInterceptor.
+ * so requiring a bearer token here would break Notifications, Live Tracking, and Chat
+ * outright. For /ws this means the connection itself stays unauthenticated end-to-end
+ * (documented limitation - notification broadcasts are public). /ws-tracking and /ws-chat
+ * are different: each service's own ChannelInterceptor (TrackingChannelInterceptor,
+ * ChatChannelInterceptor) authenticates the STOMP CONNECT frame (JWT carried as a STOMP
+ * header, not an HTTP header, so the gateway's inability to see it here doesn't matter)
+ * and authorizes every SUBSCRIBE against real order participation.
+ *
+ * POST /payments/webhook/** is also left public for a different reason: Stripe (and any
+ * future provider) calls it directly with no JWT at all, authenticated instead by an
+ * SDK-verified request signature checked inside payment-service itself (see
+ * payment-service's WebhookController/PaymentServiceImpl) - this is not an
+ * unauthenticated hole, just authentication enforced deeper in the stack than the gateway.
  *
  * CORS is wired in here via {@code .cors(...)}, backed by the {@link CorsConfigurationSource}
  * bean below, rather than left solely to {@code spring.cloud.gateway.globalcors}: that
@@ -54,8 +60,9 @@ SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .authorizeExchange(exchange -> exchange
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .pathMatchers("/ws/**", "/ws-location/**", "/ws-chat/**").permitAll()
+                        .pathMatchers("/ws/**", "/ws-tracking/**", "/ws-chat/**").permitAll()
                         .pathMatchers("/actuator/health/**").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/payments/webhook/**").permitAll()
 
                         .pathMatchers("/auth/register", "/auth/login", "/auth/refresh",
                                 "/auth/logout", "/auth/.well-known/**").permitAll()
@@ -77,8 +84,10 @@ SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of("http://localhost:4200", "http://178.105.214.109"));
+        configuration.setAllowedOriginPatterns(List.of("https://*.trycloudflare.com"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
