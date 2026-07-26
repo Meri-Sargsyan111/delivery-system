@@ -1,5 +1,6 @@
 package com.example.notificationservice.consumer;
 
+import com.example.notificationservice.entity.NotificationType;
 import com.example.notificationservice.event.DeliveryUpdateEvent;
 import com.example.notificationservice.event.OrderCreatedEvent;
 import com.example.notificationservice.service.NotificationService;
@@ -25,9 +26,14 @@ public class NotificationConsumer {
                 + ", Customer: " + event.getCustomerName()
                 + ", Address: " + event.getToAddress();
 
-        notificationStore.add(notification, event.getCustomerUserId());
+        notificationStore.add(notification, event.getCustomerUserId(), NotificationType.NEW_ORDER, false);
     }
 
+    /**
+     * ASSIGNED is the one status change that means "a courier just received a delivery" -
+     * that's the concrete case a courier app would want to play an alert sound for, so it
+     * gets its own type/playSound instead of the generic DELIVERY_UPDATE treatment.
+     */
     @KafkaListener(topics = "delivery-updates", groupId = "notification-group",
             containerFactory = "deliveryUpdateKafkaListenerContainerFactory")
     public void listenDeliveryUpdates(DeliveryUpdateEvent event) {
@@ -38,6 +44,9 @@ public class NotificationConsumer {
                 + ", Courier: " + event.getCourierName()
                 + ", Status: " + event.getStatus();
 
-        notificationStore.add(notification, event.getCourierUserId());
+        boolean courierAssigned = "ASSIGNED".equals(event.getStatus());
+        NotificationType type = courierAssigned ? NotificationType.COURIER_ASSIGNED : NotificationType.DELIVERY_UPDATE;
+
+        notificationStore.add(notification, event.getCourierUserId(), type, courierAssigned);
     }
 }

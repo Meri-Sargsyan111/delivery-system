@@ -1,6 +1,8 @@
 package com.example.notificationservice.entity;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -33,9 +35,25 @@ public class Notification {
      */
     private UUID recipientUserId;
 
+    /**
+     * Nullable - rows created before this field existed have no type. Read side treats
+     * a null type as GENERIC (see NotificationServiceImpl) rather than backfilling.
+     */
+    @Enumerated(EnumType.STRING)
+    private NotificationType type;
+
+    /** Hint for the frontend to play an alert sound (e.g. a courier's new-delivery ping). */
+    private boolean playSound;
+
     public Notification(String message, UUID recipientUserId) {
+        this(message, recipientUserId, NotificationType.GENERIC, false);
+    }
+
+    public Notification(String message, UUID recipientUserId, NotificationType type, boolean playSound) {
         this.message = message;
         this.recipientUserId = recipientUserId;
         this.createdAt = LocalDateTime.now();
+        this.type = type;
+        this.playSound = playSound;
     }
 }

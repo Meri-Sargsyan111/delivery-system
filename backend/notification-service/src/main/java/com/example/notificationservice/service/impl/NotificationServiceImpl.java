@@ -1,6 +1,8 @@
 package com.example.notificationservice.service.impl;
 
+import com.example.notificationservice.dto.NotificationResponse;
 import com.example.notificationservice.entity.Notification;
+import com.example.notificationservice.entity.NotificationType;
 import com.example.notificationservice.repository.NotificationRepository;
 import com.example.notificationservice.security.CurrentUser;
 import com.example.notificationservice.service.NotificationService;
@@ -23,15 +25,23 @@ public class NotificationServiceImpl implements NotificationService {
     private final CurrentUser currentUser;
 
     @Override
-    public void add(String message, UUID recipientUserId) {
-        log.info("WebSocket notification sent: {}", message);
+    public void add(String message, UUID recipientUserId, NotificationType type, boolean playSound) {
+        log.info("WebSocket notification sent: {} (type={}, playSound={})", message, type, playSound);
 
-        notificationRepository.save(new Notification(message, recipientUserId));
+        Notification saved = notificationRepository.save(
+                new Notification(message, recipientUserId, type, playSound));
 
         messagingTemplate.convertAndSend("/topic/notifications", message);
 
         if (recipientUserId != null) {
             messagingTemplate.convertAndSendToUser(recipientUserId.toString(), "/queue/notifications", message);
+        }
+
+        NotificationResponse structured = toResponse(saved);
+        messagingTemplate.convertAndSend("/topic/notifications/structured", structured);
+        if (recipientUserId != null) {
+            messagingTemplate.convertAndSendToUser(
+                    recipientUserId.toString(), "/queue/notifications/structured", structured);
         }
     }
 
@@ -42,5 +52,21 @@ public class NotificationServiceImpl implements NotificationService {
         }
         return notificationRepository.findByRecipientUserId(currentUser.getUserId(), pageable)
                 .map(Notification::getMessage);
+    }
+
+    @Override
+    public Page<NotificationResponse> getStructuredNotifications(Pageable pageable) {
+        if (currentUser.isAdmin()) {
+            return notificationRepository.findAll(pageable).map(this::toResponse);
+        }
+        return notificationRepository.findByRecipientUserId(currentUser.getUserId(), pageable)
+                .map(this::toResponse);
+    }
+
+    private NotificationResponse toResponse(Notification notification) {
+        NotificationType type = notification.getType() != null ? notification.getType() : NotificationType.GENERIC;
+        return new NotificationResponse(
+                notification.getId(), notification.getMessage(), type,
+                notification.isPlaySound(), notification.getCreatedAt());
     }
 }

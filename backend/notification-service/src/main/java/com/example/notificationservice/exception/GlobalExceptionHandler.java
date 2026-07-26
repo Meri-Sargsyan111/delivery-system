@@ -3,6 +3,7 @@ package com.example.notificationservice.exception;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -48,6 +49,15 @@ public class GlobalExceptionHandler {
 
         return buildErrorResponse(HttpStatus.NOT_FOUND,
                 "No endpoint found for " + request.getMethod() + " " + request.getRequestURI(), request);
+    }
+
+    /** Malformed/unparsable JSON body - a client mistake (400), not a server fault. Without
+     *  this, it falls through to the catch-all below as a misleading 500. */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleHttpMessageNotReadableException(
+            HttpMessageNotReadableException ex, HttpServletRequest request) {
+
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, "Malformed request body", request);
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)

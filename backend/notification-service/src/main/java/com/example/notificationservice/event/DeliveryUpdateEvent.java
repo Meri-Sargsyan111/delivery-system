@@ -14,7 +14,5 @@ public class DeliveryUpdateEvent {
     private Long orderId;
     private String courierName;
     private String status;
-
-    /** The assigned courier's auth-service user id, used to target this notification. */
     private UUID courierUserId;
 }

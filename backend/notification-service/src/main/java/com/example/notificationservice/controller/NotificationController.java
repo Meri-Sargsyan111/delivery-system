@@ -1,5 +1,6 @@
 package com.example.notificationservice.controller;
 
+import com.example.notificationservice.dto.NotificationResponse;
 import com.example.notificationservice.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -26,5 +27,18 @@ public class NotificationController {
             Pageable pageable) {
 
         return ResponseEntity.ok(notificationStore.getNotifications(pageable));
+    }
+
+    /** Structured counterpart of {@link #getNotifications(Pageable)} - carries type/playSound. */
+    @GetMapping("/notifications/structured")
+    public ResponseEntity<Page<NotificationResponse>> getStructuredNotifications(
+            @PageableDefault(
+                    size = 10,
+                    sort = "id",
+                    direction = Sort.Direction.DESC
+            )
+            Pageable pageable) {
+
+        return ResponseEntity.ok(notificationStore.getStructuredNotifications(pageable));
     }
 }

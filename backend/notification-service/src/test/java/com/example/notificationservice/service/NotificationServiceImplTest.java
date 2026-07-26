@@ -1,6 +1,7 @@
 package com.example.notificationservice.service;
 
 import com.example.notificationservice.entity.Notification;
+import com.example.notificationservice.entity.NotificationType;
 import com.example.notificationservice.repository.NotificationRepository;
 import com.example.notificationservice.security.CurrentUser;
 import com.example.notificationservice.service.impl.NotificationServiceImpl;
@@ -50,11 +51,13 @@ class NotificationServiceImplTest {
     void setUp() {
         lenient().when(currentUser.isAdmin()).thenReturn(true);
         lenient().when(currentUser.getUserId()).thenReturn(ADMIN_ID);
+        lenient().when(notificationRepository.save(any(Notification.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
     void add_persistsNotificationEntityWithCorrectMessageAndRecipient() {
-        notificationService.add("Order dispatched", RECIPIENT_USER_ID);
+        notificationService.add("Order dispatched", RECIPIENT_USER_ID, NotificationType.GENERIC, false);
 
         ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
         verify(notificationRepository).save(captor.capture());
@@ -65,7 +68,7 @@ class NotificationServiceImplTest {
 
     @Test
     void add_withNullRecipient_persistsWithNullRecipientUserId() {
-        notificationService.add("Order dispatched", null);
+        notificationService.add("Order dispatched", null, NotificationType.GENERIC, false);
 
         ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
         verify(notificationRepository).save(captor.capture());
@@ -75,14 +78,14 @@ class NotificationServiceImplTest {
 
     @Test
     void add_broadcastsMessageToWebSocketNotificationsTopic() {
-        notificationService.add("Order dispatched", RECIPIENT_USER_ID);
+        notificationService.add("Order dispatched", RECIPIENT_USER_ID, NotificationType.GENERIC, false);
 
         verify(messagingTemplate).convertAndSend("/topic/notifications", "Order dispatched");
     }
 
     @Test
     void add_whenRecipientKnown_alsoSendsToUserSpecificQueue() {
-        notificationService.add("Order dispatched", RECIPIENT_USER_ID);
+        notificationService.add("Order dispatched", RECIPIENT_USER_ID, NotificationType.GENERIC, false);
 
         verify(messagingTemplate).convertAndSendToUser(
                 RECIPIENT_USER_ID.toString(), "/queue/notifications", "Order dispatched");
@@ -90,7 +93,7 @@ class NotificationServiceImplTest {
 
     @Test
     void add_whenRecipientUnknown_skipsUserSpecificSend() {
-        notificationService.add("Order dispatched", null);
+        notificationService.add("Order dispatched", null, NotificationType.GENERIC, false);
 
         verify(messagingTemplate, never()).convertAndSendToUser(any(), any(), any());
     }
@@ -100,7 +103,7 @@ class NotificationServiceImplTest {
         when(notificationRepository.save(any(Notification.class)))
                 .thenThrow(new RuntimeException("DB unavailable"));
 
-        assertThatThrownBy(() -> notificationService.add("Order dispatched", RECIPIENT_USER_ID))
+        assertThatThrownBy(() -> notificationService.add("Order dispatched", RECIPIENT_USER_ID, NotificationType.GENERIC, false))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("DB unavailable");
 
@@ -112,7 +115,7 @@ class NotificationServiceImplTest {
         doThrow(new RuntimeException("WebSocket unavailable"))
                 .when(messagingTemplate).convertAndSend(eq("/topic/notifications"), any(Object.class));
 
-        assertThatThrownBy(() -> notificationService.add("Order dispatched", RECIPIENT_USER_ID))
+        assertThatThrownBy(() -> notificationService.add("Order dispatched", RECIPIENT_USER_ID, NotificationType.GENERIC, false))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("WebSocket unavailable");
 

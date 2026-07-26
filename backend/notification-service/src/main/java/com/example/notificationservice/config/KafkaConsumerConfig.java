@@ -2,6 +2,7 @@ package com.example.notificationservice.config;
 
 import com.example.notificationservice.event.DeliveryUpdateEvent;
 import com.example.notificationservice.event.OrderCreatedEvent;
+import com.example.notificationservice.event.PaymentLifecycleEvent;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -62,6 +63,20 @@ public class KafkaConsumerConfig {
         deserializer.setUseTypeHeaders(false);
 
         ConcurrentKafkaListenerContainerFactory<String, DeliveryUpdateEvent> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(
+                baseConsumerProps(), new ErrorHandlingDeserializer<>(new StringDeserializer()), new ErrorHandlingDeserializer<>(deserializer)));
+        factory.setCommonErrorHandler(skipAfterRetriesErrorHandler());
+        return factory;
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, PaymentLifecycleEvent> paymentLifecycleKafkaListenerContainerFactory() {
+        JsonDeserializer<PaymentLifecycleEvent> deserializer = new JsonDeserializer<>(PaymentLifecycleEvent.class);
+        deserializer.addTrustedPackages("*");
+        deserializer.setUseTypeHeaders(false);
+
+        ConcurrentKafkaListenerContainerFactory<String, PaymentLifecycleEvent> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(
                 baseConsumerProps(), new ErrorHandlingDeserializer<>(new StringDeserializer()), new ErrorHandlingDeserializer<>(deserializer)));

@@ -14,7 +14,5 @@ public class OrderCreatedEvent {
     private Long orderId;
     private String customerName;
     private String toAddress;
-
-    /** The owning customer's auth-service user id, used to target this notification. */
     private UUID customerUserId;
 }
