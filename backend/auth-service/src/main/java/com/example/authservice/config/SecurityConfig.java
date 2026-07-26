@@ -29,12 +29,11 @@ public class SecurityConfig {
 
             "/auth/avatars/**",
 
-            // order-service's AuthServiceClient resolves a picked customer here over plain
-            // RestTemplate with no bearer token - same deferred service-to-service-auth gap
-            // as courier-service's reserve endpoint. /customers itself (the admin-only
-            // listing, see CustomerController) is unaffected: this pattern only matches the
-            // /{id} sub-path.
-            "/customers/*"
+            "/customers/*",
+
+            "/users/*/contact",
+
+            "/users/contacts/batch"
     };
 
     @Bean

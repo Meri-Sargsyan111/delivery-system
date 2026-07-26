@@ -25,4 +25,10 @@ public interface RefreshTokenService {
      * Silently no-ops for a missing/unknown/already-revoked token so logout stays idempotent.
      */
     void revoke(String rawToken);
+
+    /**
+     * Revokes every still-valid refresh token belonging to the given user, so all of their
+     * existing sessions are logged out. Used by account deletion.
+     */
+    void revokeAllForUser(UUID userId);
 }

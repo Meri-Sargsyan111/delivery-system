@@ -51,6 +51,13 @@ public class User {
 
     private String avatarUrl;
 
+    /** UI theme preference ("light"/"dark") - null means unset, frontend applies its own
+     *  default. Validated against a fixed allowlist at the service layer, not here. */
+    private String theme;
+
+    /** UI language preference (e.g. "en"/"hy"/"ru") - null means unset, same as theme. */
+    private String language;
+
     private UUID createdBy;
 
     private LocalDateTime createdAt;

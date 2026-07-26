@@ -70,6 +70,12 @@ public class RefreshTokenServiceImpl implements RefreshTokenService {
         });
     }
 
+    @Override
+    @Transactional
+    public void revokeAllForUser(UUID userId) {
+        refreshTokenRepository.revokeAllForUser(userId, Instant.now());
+    }
+
     private RefreshToken loadValid(String rawToken) {
         if (!StringUtils.hasText(rawToken)) {
             throw new InvalidRefreshTokenException("Missing refresh token");

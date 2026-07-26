@@ -312,7 +312,7 @@ class AuthServiceImplTest {
         User customer = new User();
         customer.setRole(Role.ROLE_CUSTOMER);
         CustomerSummaryResponse summary = new CustomerSummaryResponse(
-                UUID.randomUUID(), "John", "Doe", "john@example.com");
+                UUID.randomUUID(), "John", "Doe", "john@example.com", "+37499123456");
 
         when(userRepository.findByRole(Role.ROLE_CUSTOMER)).thenReturn(List.of(customer));
         when(userMapper.toCustomerSummary(customer)).thenReturn(summary);
@@ -329,7 +329,7 @@ class AuthServiceImplTest {
         customer.setId(customerId);
         customer.setRole(Role.ROLE_CUSTOMER);
         CustomerSummaryResponse summary = new CustomerSummaryResponse(
-                customerId, "John", "Doe", "john@example.com");
+                customerId, "John", "Doe", "john@example.com", "+37499123456");
 
         when(userRepository.findByIdAndRole(customerId, Role.ROLE_CUSTOMER)).thenReturn(Optional.of(customer));
         when(userMapper.toCustomerSummary(customer)).thenReturn(summary);

@@ -1,9 +1,12 @@
 package com.example.authservice.controller;
 
 import com.example.authservice.dto.AuthResponse;
+import com.example.authservice.dto.DeleteAccountRequest;
 import com.example.authservice.dto.LoginRequest;
 import com.example.authservice.dto.RegisterRequest;
+import com.example.authservice.dto.UpdatePreferencesRequest;
 import com.example.authservice.dto.UpdateProfileRequest;
+import com.example.authservice.dto.UserPreferencesResponse;
 import com.example.authservice.dto.UserProfileResponse;
 import com.example.authservice.dto.UserResponse;
 import com.example.authservice.exception.InvalidRefreshTokenException;
@@ -19,6 +22,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -27,6 +31,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import java.util.UUID;
 
 @Slf4j
 @RestController
@@ -100,5 +105,31 @@ public class AuthController {
     public ResponseEntity<UserProfileResponse> uploadAvatar(@RequestParam("file") MultipartFile file) {
         log.info("POST /auth/me/avatar - uploading avatar");
         return ResponseEntity.ok(authService.uploadAvatar(file));
+    }
+
+    @GetMapping("/me/preferences")
+    public ResponseEntity<UserPreferencesResponse> getPreferences() {
+        log.info("GET /auth/me/preferences - fetching current user preferences");
+        return ResponseEntity.ok(authService.getPreferences());
+    }
+
+    @PutMapping("/me/preferences")
+    public ResponseEntity<UserPreferencesResponse> updatePreferences(
+            @RequestBody UpdatePreferencesRequest request) {
+        log.info("PUT /auth/me/preferences - updating current user preferences");
+        return ResponseEntity.ok(authService.updatePreferences(request));
+    }
+
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteAccount(
+            @RequestBody(required = false) DeleteAccountRequest request) {
+        log.info("DELETE /auth/me - deleting current user account");
+
+        UUID userId = authService.deleteAccount(request != null ? request : new DeleteAccountRequest());
+        refreshTokenService.revokeAllForUser(userId);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, refreshCookieFactory.clear().toString())
+                .build();
     }
 }

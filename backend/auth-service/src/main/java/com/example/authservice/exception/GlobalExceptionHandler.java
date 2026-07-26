@@ -3,6 +3,7 @@ package com.example.authservice.exception;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.ObjectError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -52,6 +53,27 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request);
     }
 
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleUserNotFoundException(
+            UserNotFoundException ex, HttpServletRequest request) {
+
+        return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(InvalidPreferenceException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidPreferenceException(
+            InvalidPreferenceException ex, HttpServletRequest request) {
+
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(NotificationServiceUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleNotificationServiceUnavailableException(
+            NotificationServiceUnavailableException ex, HttpServletRequest request) {
+
+        return buildErrorResponse(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage(), request);
+    }
+
     @ExceptionHandler(InvalidAvatarFileException.class)
     public ResponseEntity<ErrorResponse> handleInvalidAvatarFileException(
             InvalidAvatarFileException ex, HttpServletRequest request) {
@@ -84,6 +106,15 @@ public class GlobalExceptionHandler {
 
         return buildErrorResponse(HttpStatus.NOT_FOUND,
                 "No endpoint found for " + request.getMethod() + " " + request.getRequestURI(), request);
+    }
+
+    /** Malformed/unparsable JSON body - a client mistake (400), not a server fault. Without
+     *  this, it falls through to the catch-all below as a misleading 500. */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleHttpMessageNotReadableException(
+            HttpMessageNotReadableException ex, HttpServletRequest request) {
+
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, "Malformed request body", request);
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
