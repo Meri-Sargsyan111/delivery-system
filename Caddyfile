@@ -40,7 +40,7 @@
 		reverse_proxy frontend:80
 	}
 
-	@api path /auth /auth/* /customers /customers/* /orders /orders/* /courier /courier/* /tracking /tracking/* /notifications /notifications/* /chat /chat/* /ws /ws/* /ws-location /ws-location/* /ws-chat /ws-chat/*
+	@api path /auth /auth/* /customers /customers/* /orders /orders/* /courier /courier/* /tracking /tracking/* /notifications /notifications/* /chat /chat/* /ws /ws/* /ws-tracking /ws-tracking/* /ws-chat /ws-chat/* /api/ai /api/ai/* /ai /ai/* /payments /payments/*
 	handle @api {
 		reverse_proxy api-gateway:8080
 	}

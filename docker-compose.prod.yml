@@ -1,15 +1,15 @@
 # Deployment-only override, applied on top of docker-compose.yml via:
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile full-stack up -d --build
 #
-# docker-compose.yml's own comments document that MODE A (--profile full-stack, every
-# service containerized) needs KAFKA_ADVERTISED_LISTENERS to point at the kafka service's
-# hostname instead of localhost, since "localhost" inside a container is the container
-# itself, not the kafka container. This is the one value that differs between local MODE A
-# testing and a real deployment where nothing runs natively - kept as a separate override
-# file so docker-compose.yml itself (and its documented local dev workflow) is untouched.
+# docker-compose.yml's kafka service now advertises both a host listener (localhost:9092,
+# for MODE B) and a Docker-internal listener (kafka:29092, for MODE A) permanently - no
+# per-mode override needed here anymore. Do NOT set KAFKA_ADVERTISED_LISTENERS in this
+# file: it would replace (not merge with) the base file's two-listener value, silently
+# reintroducing the "container can't reconnect to the broker" bug for every full-stack
+# service the next time this override is applied.
 #
 # This file also adds a Caddy reverse proxy as the only publicly reachable service, and
-# caps every JVM's heap so the whole stack (kafka + postgres + 7 Spring Boot services +
+# caps every JVM's heap so the whole stack (kafka + postgres + 9 Spring Boot services +
 # caddy) has a chance of fitting on a small 2GB deployment box. `ports:` entries across
 # compose files are concatenated, not replaced (Compose merge semantics), which is why
 # docker-compose.yml itself binds every service's published port to 127.0.0.1 - only
@@ -17,7 +17,6 @@
 services:
   kafka:
     environment:
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       # Default heap on cp-kafka can reach ~1G unconstrained, too much on a 2GB host.
       KAFKA_HEAP_OPTS: "-Xmx256M -Xms256M"
 
@@ -42,6 +41,14 @@ services:
       JAVA_TOOL_OPTIONS: "-Xmx192m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC"
 
   chat-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx192m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC"
+
+  ai-service:
+    environment:
+      JAVA_TOOL_OPTIONS: "-Xmx192m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC"
+
+  payment-service:
     environment:
       JAVA_TOOL_OPTIONS: "-Xmx192m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC"
 

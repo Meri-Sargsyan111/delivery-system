@@ -16,8 +16,23 @@
 # etc.) that redirect it from localhost defaults to Docker service hostnames.
 services:
 
-  # Always-on infra for MODE B: the one piece of shared infrastructure that doesn't
-  # have a native-Windows equivalent already running (unlike Postgres - see above).
+  # Always-on infra for both modes: the one piece of shared infrastructure that
+  # doesn't have a native-Windows equivalent already running (unlike Postgres - see
+  # above). Exposes two listeners so MODE A (containerized) and MODE B (native)
+  # clients can each connect correctly against this SAME broker config, with no
+  # override file or manual switch needed:
+  #   - PLAINTEXT_HOST, published to the host at 127.0.0.1:9092, advertises
+  #     "localhost:9092" - what MODE B's natively-run Spring Boot services connect
+  #     to (matches every service's `${KAFKA_BROKER:localhost:9092}` default).
+  #   - PLAINTEXT_DOCKER, internal to the compose network only (no host port
+  #     published), advertises "kafka:29092" - what MODE A's containerized services
+  #     connect to via KAFKA_BROKER=kafka:29092 (see full-stack-profile services
+  #     below). Kafka requires clients to reconnect to whatever address the broker
+  #     advertises after the initial bootstrap; a single listener can only advertise
+  #     one address, which is why a containerized client bootstrapping against
+  #     "kafka:9092" but then being told to reconnect to "localhost:9092" (its own
+  #     container) could never actually produce/consume - only ever appearing to
+  #     work up to the first bootstrap call.
   kafka:
     image: confluentinc/cp-kafka:7.4.0
     ports:
@@ -26,16 +41,11 @@ services:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      # Advertises localhost:9092 - correct for MODE B, where every client (native
-      # Spring Boot services, this host's own tooling) connects from outside Docker's
-      # network. This must change to kafka:9092 only if MODE A's containers are the
-      # ones talking to this same broker instead - the two modes need different values,
-      # which is exactly why they must not run simultaneously.
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT_HOST://0.0.0.0:9092,PLAINTEXT_DOCKER://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT_HOST://localhost:9092,PLAINTEXT_DOCKER://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT_HOST:PLAINTEXT,PLAINTEXT_DOCKER:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_DOCKER
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qg
     healthcheck:
@@ -50,7 +60,7 @@ services:
     image: postgres:15
     profiles: ["full-stack"]
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5433:5432"
     environment:
       POSTGRES_DB: deliverydb
       POSTGRES_USER: postgres
@@ -77,7 +87,7 @@ services:
       kafka:
         condition: service_healthy
     environment:
-      KAFKA_BROKER: kafka:9092
+      KAFKA_BROKER: kafka:29092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/authdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -95,6 +105,7 @@ services:
       # for any real deployment so the seeded admin isn't a publicly-known credential.
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@delivery.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin@12345}
+      NOTIFICATION_SERVICE_URL: http://notification-service:8084
 
   order-service:
     build: ./backend/order-service
@@ -111,10 +122,11 @@ services:
     environment:
       AUTH_SERVICE_URL: http://auth-service:8085
       COURIER_SERVICE_URL: http://courier-service:8082
-      KAFKA_BROKER: kafka:9092
+      KAFKA_BROKER: kafka:29092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-service-token-change-me}
 
   courier-service:
     build: ./backend/courier-service
@@ -130,14 +142,18 @@ services:
         condition: service_healthy
       auth-service:
         condition: service_started
+      tracking-service:
+        condition: service_started
     environment:
       AUTH_SERVICE_URL: http://auth-service:8085
       ORDER_SERVICE_URL: http://order-service:8081
-      KAFKA_BROKER: kafka:9092
+      TRACKING_SERVICE_URL: http://tracking-service:8083
+      KAFKA_BROKER: kafka:29092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       AVATAR_STORAGE_PATH: /app/uploads/avatars
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-service-token-change-me}
 
   tracking-service:
     build: ./backend/tracking-service
@@ -151,9 +167,12 @@ services:
         condition: service_healthy
       auth-service:
         condition: service_started
+      order-service:
+        condition: service_started
     environment:
       AUTH_SERVICE_URL: http://auth-service:8085
-      KAFKA_BROKER: kafka:9092
+      ORDER_SERVICE_URL: http://order-service:8081
+      KAFKA_BROKER: kafka:29092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -172,7 +191,7 @@ services:
         condition: service_started
     environment:
       AUTH_SERVICE_URL: http://auth-service:8085
-      KAFKA_BROKER: kafka:9092
+      KAFKA_BROKER: kafka:29092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/deliverydb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -191,10 +210,67 @@ services:
         condition: service_started
     environment:
       AUTH_SERVICE_URL: http://auth-service:8085
-      KAFKA_BROKER: kafka:9092
+      KAFKA_BROKER: kafka:29092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/chatdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+
+  ai-service:
+    build: ./backend/ai-service
+    profiles: ["full-stack"]
+    ports:
+      - "127.0.0.1:8087:8087"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8085
+      # Ollama itself is not containerized here - it runs on the host (see README/local
+      # setup). "localhost" inside this container would mean the container itself, not
+      # the host, so this must point at the host via Docker Desktop's host.docker.internal.
+      OLLAMA_BASE_URL: http://host.docker.internal:11434/api/generate
+      # Persists frozen estimates (see entity.Estimate) so payment-service can claim the
+      # authoritative charge amount - see docker/postgres-init/02-create-payment-ai-db.sql.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/aidb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+
+  payment-service:
+    build: ./backend/payment-service
+    profiles: ["full-stack"]
+    ports:
+      - "127.0.0.1:8088:8088"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      order-service:
+        condition: service_started
+      ai-service:
+        condition: service_started
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8085
+      ORDER_SERVICE_URL: http://order-service:8081
+      AI_SERVICE_URL: http://ai-service:8087
+      KAFKA_BROKER: kafka:29092
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/paymentdb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev-internal-service-token-change-me}
+      # Test/sandbox Stripe credentials only - see .env.example. Real production use
+      # would need a currency/provider change (Stripe doesn't support AMD/Armenia).
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      ROCKET_LINE_ENABLED: ${ROCKET_LINE_ENABLED:-false}
+      ROCKET_LINE_BASE_URL: ${ROCKET_LINE_BASE_URL:-}
+      ROCKET_LINE_API_KEY: ${ROCKET_LINE_API_KEY:-}
+      ROCKET_LINE_WEBHOOK_SECRET: ${ROCKET_LINE_WEBHOOK_SECRET:-}
 
   api-gateway:
     build: ./backend/api-gateway
@@ -214,6 +290,10 @@ services:
         condition: service_started
       chat-service:
         condition: service_started
+      ai-service:
+        condition: service_started
+      payment-service:
+        condition: service_started
     environment:
       AUTH_SERVICE_URL: http://auth-service:8085
       ORDER_SERVICE_URL: http://order-service:8081
@@ -221,6 +301,8 @@ services:
       TRACKING_SERVICE_URL: http://tracking-service:8083
       NOTIFICATION_SERVICE_URL: http://notification-service:8084
       CHAT_SERVICE_URL: http://chat-service:8086
+      AI_SERVICE_URL: http://ai-service:8087
+      PAYMENT_SERVICE_URL: http://payment-service:8088
 
 # Named volumes (MODE A only): survive container recreation/rebuilds, unlike the
 # container's own writable layer.

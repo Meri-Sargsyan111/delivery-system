@@ -1,0 +1,9 @@
+# Local-machine-only override: this dev box already has a native PostgreSQL 18
+# Windows service bound to 127.0.0.1:5432, which collides with the containerized
+# postgres service's port mapping in docker-compose.yml. Remapping the host side
+# to 5433 avoids needing admin rights to stop the native service. Not meant for
+# real deployment (docker-compose.prod.yml), only for running the full stack here.
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:5433:5432"
