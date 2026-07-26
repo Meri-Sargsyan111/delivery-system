@@ -17,6 +17,7 @@ public class OrderCreatedEvent {
 
     private Long orderId;
     private String customerName;
+    private String fromAddress;
     private String toAddress;
     private UUID customerUserId;
 }

@@ -12,6 +12,13 @@ spring:
       group-id: tracking-group
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        # Same rationale as order-service/courier-service: bound how long a Kafka
+        # outage can block a request/consumer thread publishing a lifecycle event.
+        max.block.ms: 5000
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/deliverydb}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
@@ -24,3 +31,30 @@ spring:
 
 server:
   port: 8083
+
+http-client:
+  connect-timeout-ms: ${TRACKING_HTTP_CONNECT_TIMEOUT_MS:3000}
+  read-timeout-ms: ${TRACKING_HTTP_READ_TIMEOUT_MS:5000}
+
+services:
+  order-service:
+    base-url: ${ORDER_SERVICE_URL:http://localhost:8081}
+
+# Real geocoding/routing engine (see routing/GeocodingClient, routing/RoutingClient) -
+# same free/keyless Nominatim+OSRM services ai-service uses, mirrored here rather than
+# called over the network since tracking-service needs this on a much hotter path
+# (every new order, every live-tracking route fetch) - see this session's design notes
+# for why a synchronous ai-service call wasn't used instead.
+routing:
+  geocoding-base-url: ${GEOCODING_BASE_URL:https://nominatim.openstreetmap.org/search}
+  routing-base-url: ${ROUTING_BASE_URL:https://router.project-osrm.org/route/v1/driving}
+  min-request-interval-ms: ${GEOCODING_MIN_INTERVAL_MS:1100}
+  cache-ttl-hours: ${ROUTE_CACHE_TTL_HOURS:24}
+
+# Live tracking (see entity/TrackingState, entity/DeliveryPhase) - GPS-proximity
+# thresholds for inferring PICKED_UP/ARRIVING, and simulated-courier speed for the
+# dwell-timeout safety valve.
+tracking:
+  pickup-radius-meters: ${TRACKING_PICKUP_RADIUS_METERS:150}
+  destination-radius-meters: ${TRACKING_DESTINATION_RADIUS_METERS:300}
+  route-deviation-threshold-meters: ${TRACKING_DEVIATION_THRESHOLD_METERS:200}

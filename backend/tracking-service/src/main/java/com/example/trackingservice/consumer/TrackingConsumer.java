@@ -5,6 +5,7 @@ import com.example.trackingservice.entity.TrackingEvent;
 import com.example.trackingservice.event.DeliveryUpdateEvent;
 import com.example.trackingservice.repository.OrderOwnershipRepository;
 import com.example.trackingservice.repository.TrackingEventRepository;
+import com.example.trackingservice.service.TrackingStateService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -20,6 +21,7 @@ public class TrackingConsumer {
 
     private final TrackingEventRepository trackingEventRepository;
     private final OrderOwnershipRepository orderOwnershipRepository;
+    private final TrackingStateService trackingStateService;
 
     @KafkaListener(topics = "delivery-updates", groupId = "tracking-group",
             containerFactory = "deliveryUpdateKafkaListenerContainerFactory")
@@ -42,5 +44,7 @@ public class TrackingConsumer {
         }
 
         log.info("Tracking saved: orderId={}, status={}", event.getOrderId(), event.getStatus());
+
+        trackingStateService.onDeliveryStatusChanged(event.getOrderId(), event.getStatus(), null, event.getCourierUserId());
     }
 }

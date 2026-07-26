@@ -3,6 +3,7 @@ package com.example.trackingservice.config;
 import com.example.trackingservice.controller.TrackingController;
 import com.example.trackingservice.mapper.TrackingEventMapper;
 import com.example.trackingservice.service.TrackingService;
+import com.example.trackingservice.service.TrackingStateService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -26,8 +27,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Verifies the SecurityFilterChain wiring, not business logic: TrackingService/
  * TrackingEventMapper are mocked out, and JwtDecoder is mocked so no real key material
  * or network call to auth-service's JWKS endpoint is needed to run this test.
- * No internal service-to-service call depends on tracking-service, so no carve-out
- * beyond OPTIONS is needed.
+ * courier-service now calls GET /tracking/{orderId}/route synchronously with the
+ * caller's own forwarded JWT (see TrackingServiceClient there) - no service-to-service
+ * credential carve-out needed, so /tracking/** stays authenticated except /ws-tracking/**.
  */
 @WebMvcTest(TrackingController.class)
 @Import(SecurityConfig.class)
@@ -36,6 +38,7 @@ class SecurityConfigTest {
     @Autowired private MockMvc mockMvc;
 
     @MockBean private TrackingService trackingService;
+    @MockBean private TrackingStateService trackingStateService;
     @MockBean private TrackingEventMapper trackingEventMapper;
     @MockBean private JwtDecoder jwtDecoder;
 

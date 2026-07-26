@@ -1,5 +1,7 @@
 package com.example.trackingservice.exception;
 
+import com.example.trackingservice.routing.GeocodingUnavailableException;
+import com.example.trackingservice.routing.RoutingUnavailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +24,20 @@ public class GlobalExceptionHandler {
             AccessDeniedException ex, HttpServletRequest request) {
 
         return buildErrorResponse(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleEntityNotFoundException(
+            EntityNotFoundException ex, HttpServletRequest request) {
+
+        return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage(), request);
+    }
+
+    @ExceptionHandler({GeocodingUnavailableException.class, RoutingUnavailableException.class})
+    public ResponseEntity<ErrorResponse> handleRoutingUnavailable(
+            RuntimeException ex, HttpServletRequest request) {
+
+        return buildErrorResponse(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage(), request);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

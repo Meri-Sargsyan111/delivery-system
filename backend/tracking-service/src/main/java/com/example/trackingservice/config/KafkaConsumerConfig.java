@@ -1,5 +1,6 @@
 package com.example.trackingservice.config;
 
+import com.example.trackingservice.event.CourierLocationEvent;
 import com.example.trackingservice.event.DeliveryUpdateEvent;
 import com.example.trackingservice.event.OrderCreatedEvent;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -66,6 +67,26 @@ public class KafkaConsumerConfig {
         deserializer.setUseTypeHeaders(false);
 
         ConcurrentKafkaListenerContainerFactory<String, OrderCreatedEvent> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(
+                baseConsumerProps(), new ErrorHandlingDeserializer<>(new StringDeserializer()), new ErrorHandlingDeserializer<>(deserializer)));
+        factory.setCommonErrorHandler(skipAfterRetriesErrorHandler());
+        return factory;
+    }
+
+    /**
+     * Hot-path topic (a message per meaningful courier location change) - the
+     * ErrorHandlingDeserializer + skip-after-retries wiring matters even more here than
+     * on the lower-volume topics above, since a stuck consumer group on this topic would
+     * silently freeze every order's live tracking, not just one.
+     */
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, CourierLocationEvent> courierLocationKafkaListenerContainerFactory() {
+        JsonDeserializer<CourierLocationEvent> deserializer = new JsonDeserializer<>(CourierLocationEvent.class);
+        deserializer.addTrustedPackages("*");
+        deserializer.setUseTypeHeaders(false);
+
+        ConcurrentKafkaListenerContainerFactory<String, CourierLocationEvent> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(
                 baseConsumerProps(), new ErrorHandlingDeserializer<>(new StringDeserializer()), new ErrorHandlingDeserializer<>(deserializer)));
