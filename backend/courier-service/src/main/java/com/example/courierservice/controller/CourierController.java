@@ -2,6 +2,7 @@ package com.example.courierservice.controller;
 
 import com.example.courierservice.courier.CourierStatus;
 import com.example.courierservice.dto.AssignmentResponse;
+import com.example.courierservice.dto.CourierContactCardResponse;
 import com.example.courierservice.dto.CourierLocation;
 import com.example.courierservice.dto.CourierResponse;
 import com.example.courierservice.dto.CreateCourierRequest;
@@ -97,6 +98,17 @@ public class CourierController {
                 .body(courierRatingService.rateOrder(orderId, request));
     }
 
+    /**
+     * Live-tracking contact card for a courier: full name, phone number, rating, and
+     * completed-deliveries count - same open-to-any-authenticated-role visibility as
+     * {@link #listCouriers}, since the customer-facing tracking page needs it.
+     */
+    @GetMapping("/{courierId}/contact-card")
+    public ResponseEntity<CourierContactCardResponse> getContactCard(@PathVariable Long courierId) {
+        log.info("GET /courier/{}/contact-card", courierId);
+        return ResponseEntity.ok(courierAssignmentService.getContactCard(courierId));
+    }
+
     @GetMapping("/available")
     public ResponseEntity<List<CourierResponse>> getAvailableCouriers() {
         log.info("GET /courier/available");
@@ -111,10 +123,11 @@ public class CourierController {
     }
 
     /**
-     * Stays public/unauthenticated: order-service's CourierServiceClient calls this
-     * synchronously during assignment and carries no credential today (pre-existing,
-     * documented gap - see SecurityConfig). Now returns the courier's linked userId
-     * so order-service can record a locally-checkable ownership link.
+     * Stays outside the normal JWT chain since it's a service-to-service call with no
+     * end-user identity to validate - order-service's CourierServiceClient calls this
+     * synchronously during assignment. Protected instead by InternalServiceTokenFilter's
+     * shared-secret header check (see SecurityConfig). Returns the courier's linked
+     * userId so order-service can record a locally-checkable ownership link.
      */
     @PutMapping("/{courierId}/reserve/{orderId}")
     public ResponseEntity<ReserveCourierResponse> reserveCourier(
@@ -129,6 +142,21 @@ public class CourierController {
     public ResponseEntity<String> startDelivery(@PathVariable Long orderId) {
         log.info("PUT /courier/start/{} - starting delivery", orderId);
         return ResponseEntity.ok(courierService.startDelivery(orderId));
+    }
+
+    /**
+     * The authenticated courier rejects their own outstanding assignment offer for this
+     * order - see CourierAssignmentService.rejectAssignment for the ownership check
+     * (only the courier actually assigned to this order may reject it) and for what
+     * happens next (courier freed, assignment removed, order-service reverts the order
+     * to CREATED, admin notified - never auto-reassigned).
+     */
+    @PreAuthorize("hasRole('COURIER')")
+    @PutMapping("/reject/{orderId}")
+    public ResponseEntity<String> rejectAssignment(@PathVariable Long orderId) {
+        log.info("PUT /courier/reject/{} - rejecting assignment", orderId);
+        courierAssignmentService.rejectAssignment(orderId);
+        return ResponseEntity.ok("Assignment rejected");
     }
 
     @PreAuthorize("hasRole('ADMIN') or hasRole('COURIER')")

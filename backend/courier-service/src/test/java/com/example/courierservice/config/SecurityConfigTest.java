@@ -99,11 +99,27 @@ class SecurityConfigTest {
     }
 
     @Test
-    void reserveCourier_withoutToken_staysPublic() throws Exception {
+    void reserveCourier_withoutInternalToken_returns401() throws Exception {
+
+        mockMvc.perform(put("/courier/1/reserve/2"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void reserveCourier_withInvalidInternalToken_returns401() throws Exception {
+
+        mockMvc.perform(put("/courier/1/reserve/2")
+                        .header("X-Internal-Token", "wrong-token"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void reserveCourier_withValidInternalToken_staysUnauthenticatedButAllowed() throws Exception {
 
         when(courierAssignmentService.reserveCourier(1L, 2L)).thenReturn(null);
 
-        mockMvc.perform(put("/courier/1/reserve/2"))
+        mockMvc.perform(put("/courier/1/reserve/2")
+                        .header("X-Internal-Token", "dev-internal-service-token-change-me"))
                 .andExpect(status().isOk());
     }
 

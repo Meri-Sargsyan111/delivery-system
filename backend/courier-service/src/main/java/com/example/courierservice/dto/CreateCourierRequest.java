@@ -1,5 +1,6 @@
 package com.example.courierservice.dto;
 
+import com.example.courierservice.courier.VehicleType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -24,4 +25,12 @@ public class CreateCourierRequest {
 
     /** Optional: links this courier record to a ROLE_COURIER user account. Admin-only field. */
     private UUID userId;
+
+    /** Optional - defaults to CAR when omitted (see CourierAssignmentServiceImpl). */
+    private VehicleType vehicleType;
+
+    /** Pre-vehicleType constructor, kept so existing call sites/tests need no changes. */
+    public CreateCourierRequest(String name, String photoUrl, UUID userId) {
+        this(name, photoUrl, userId, null);
+    }
 }

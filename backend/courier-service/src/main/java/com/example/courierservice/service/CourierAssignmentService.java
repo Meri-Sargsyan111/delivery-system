@@ -2,6 +2,7 @@ package com.example.courierservice.service;
 
 import com.example.courierservice.courier.CourierStatus;
 import com.example.courierservice.dto.AssignmentResponse;
+import com.example.courierservice.dto.CourierContactCardResponse;
 import com.example.courierservice.dto.CourierResponse;
 import com.example.courierservice.dto.CreateCourierRequest;
 import org.springframework.data.domain.Page;
@@ -64,6 +65,19 @@ public interface CourierAssignmentService {
     void releaseCourierForOrder(Long orderId);
 
     /**
+     * The authenticated courier rejects their currently outstanding assignment offer for
+     * the given order: the courier is freed back to {@code AVAILABLE}, the assignment
+     * record is removed, order-service is told to revert the order to {@code CREATED}
+     * (back in the admin queue - never auto-reassigned), and a delivery update is
+     * published so the admin (and anyone else listening) is notified.
+     *
+     * @param orderId the order whose assignment is being rejected
+     * @throws com.example.courierservice.exception.EntityNotFoundException if the caller has no linked courier record, or no assignment exists for the order
+     * @throws org.springframework.security.access.AccessDeniedException if the assignment belongs to a different courier
+     */
+    void rejectAssignment(Long orderId);
+
+    /**
      * Creates a new courier with status {@code AVAILABLE}. Status is never accepted
      * from the caller - it is always assigned server-side.
      *
@@ -115,4 +129,22 @@ public interface CourierAssignmentService {
      * @throws com.example.courierservice.exception.InvalidAvatarException if the file is missing, oversized, or not a supported image type
      */
     CourierResponse uploadAvatarForCourier(Long courierId, MultipartFile file);
+
+    /**
+     * Increments the courier's completed-deliveries counter by one. Called once per order
+     * on the same transition that marks it DELIVERED (see CourierServiceImpl.markAsDelivered).
+     * A no-op (logged, not thrown) if the courier no longer exists, matching
+     * {@link #releaseCourierForOrder}'s tolerance for a missing courier.
+     */
+    void incrementCompletedDeliveries(Long courierId);
+
+    /**
+     * Everything the live-tracking contact card needs for the courier assigned to an order:
+     * full name and phone number (from auth-service, via {@code courier.userId}), rating,
+     * and completed-delivery count. Phone number is null (not an error) if the courier has
+     * no linked account or auth-service is unreachable - see AuthServiceClient.
+     *
+     * @throws com.example.courierservice.exception.EntityNotFoundException if the courier does not exist
+     */
+    CourierContactCardResponse getContactCard(Long courierId);
 }

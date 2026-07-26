@@ -11,20 +11,23 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
  * Validates the same RS256 JWTs issued by auth-service (via its JWKS endpoint,
  * see application.yml's jwk-set-uri) for courier-service's own HTTP endpoints,
  * so this service is protected even when called directly, bypassing the gateway.
  *
- * Two paths stay public, both deliberately, both pre-existing gaps not introduced here:
+ * One path stays public in the JWT sense (permitAll() below):
  *  - PUT /courier/{courierId}/reserve/{orderId}: order-service's CourierServiceClient calls
- *    this synchronously during assignment and carries no credential today. Locking it down
- *    would break the working courier-assignment flow with no compatible replacement in this
- *    phase's scope - deferred service-to-service-auth gap.
- *  - /ws-location/**: the STOMP/WebSocket handshake. Browsers cannot attach an Authorization
- *    header to a native WebSocket handshake, so requiring a bearer token here would break
- *    Live Tracking outright. WebSocket auth is explicitly out of scope for this phase.
+ *    this synchronously during assignment and has no end-user JWT to present (it's a
+ *    service-to-service call, not made on behalf of an authenticated user). Rather than
+ *    leave it open to any caller, InternalServiceTokenFilter (registered below) requires a
+ *    shared-secret header on this specific path before it reaches the controller.
+ *
+ * The old /ws-location WebSocket endpoint (a global, unauthenticated location broadcast)
+ * has been retired - live courier location now flows through Kafka to tracking-service,
+ * which rebroadcasts it on its own per-order, authorization-checked WebSocket topic.
  */
 @Configuration
 @EnableWebSecurity
@@ -33,14 +36,15 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(
-            HttpSecurity http, JwtAuthenticationConverter jwtAuthenticationConverter) throws Exception {
+            HttpSecurity http, JwtAuthenticationConverter jwtAuthenticationConverter,
+            InternalServiceTokenFilter internalServiceTokenFilter) throws Exception {
 
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .addFilterBefore(internalServiceTokenFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/ws-location/**").permitAll()
                         .requestMatchers(HttpMethod.PUT, "/courier/{courierId:\\d+}/reserve/{orderId:\\d+}").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2

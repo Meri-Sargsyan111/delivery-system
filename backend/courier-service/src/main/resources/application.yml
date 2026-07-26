@@ -11,6 +11,14 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        # Default is 60s: send() blocks the calling request thread for that long
+        # before failing when the broker is unreachable. Publish failures are already
+        # caught and logged as best-effort (see CourierServiceImpl/CourierAssignmentServiceImpl),
+        # so this just bounds how long a Kafka outage can make an otherwise-successful
+        # request hang - notably order-service's synchronous PUT /courier/{id}/reserve/{orderId}
+        # call, which would otherwise itself be blocked for the full 60s too.
+        max.block.ms: 5000
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/deliverydb}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
@@ -27,10 +35,37 @@ spring:
 server:
   port: 8082
 
+http-client:
+  connect-timeout-ms: ${COURIER_HTTP_CONNECT_TIMEOUT_MS:3000}
+  read-timeout-ms: ${COURIER_HTTP_READ_TIMEOUT_MS:5000}
+
 services:
   order-service:
     base-url: ${ORDER_SERVICE_URL:http://localhost:8081}
+  tracking-service:
+    base-url: ${TRACKING_SERVICE_URL:http://localhost:8083}
+  auth-service:
+    base-url: ${AUTH_SERVICE_URL:http://localhost:8085}
+
+# Shared secret order-service must present (via X-Internal-Token) when calling the
+# unauthenticated PUT /courier/{courierId}/reserve/{orderId} service-to-service
+# endpoint - see InternalServiceTokenFilter. Must match order-service's own
+# internal.service-token value.
+internal:
+  service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-service-token-change-me}
 
 courier:
   avatar:
     storage-path: ${AVATAR_STORAGE_PATH:uploads/avatars}
+  assignment:
+    # How long a courier has to accept/reject an assignment offer before it's automatically
+    # reverted to the admin queue (see CourierAssignmentServiceImpl.scheduleOfferTimeout).
+    offer-timeout-seconds: ${COURIER_ASSIGNMENT_OFFER_TIMEOUT_SECONDS:20}
+  # Live-tracking simulator (see LocationSimulatorServiceImpl) and location-update
+  # throttling (see LocationServiceImpl) - no physical courier device exists in this
+  # system, so a real route is walked at a configurable simulated speed.
+  simulation:
+    speed-kmh: ${COURIER_SIMULATION_SPEED_KMH:40}
+  location:
+    min-interval-ms: ${COURIER_LOCATION_MIN_INTERVAL_MS:5000}
+    min-distance-meters: ${COURIER_LOCATION_MIN_DISTANCE_METERS:15}

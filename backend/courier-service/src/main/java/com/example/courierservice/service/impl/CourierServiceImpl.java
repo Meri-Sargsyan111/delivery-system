@@ -46,7 +46,8 @@ public class CourierServiceImpl implements CourierService {
         recordAndPublishStatusUpdate(orderId, order, "IN_PROGRESS");
         log.info("Delivery started for orderId: {}, event published to Kafka", orderId);
 
-        locationSimulatorService.startTracking(orderId);
+        Long courierId = courierAssignmentService.getAssignment(orderId).getCourierId();
+        locationSimulatorService.startTracking(orderId, courierId, order.getCourierUserId());
 
         return "Delivery started";
     }
@@ -62,10 +63,13 @@ public class CourierServiceImpl implements CourierService {
                     "Order " + orderId + " cannot be delivered: current status is " + order.getStatus());
         }
 
+        Long courierId = courierAssignmentService.getAssignment(orderId).getCourierId();
+
         recordAndPublishStatusUpdate(orderId, order, "DELIVERED");
         log.info("Order {} marked as DELIVERED, event published to Kafka", orderId);
 
         courierAssignmentService.releaseCourierForOrder(orderId);
+        courierAssignmentService.incrementCompletedDeliveries(courierId);
         locationSimulatorService.stopTracking(orderId);
 
         return "Delivery completed";
@@ -80,8 +84,13 @@ public class CourierServiceImpl implements CourierService {
         update.setStatus(status);
         courierUpdateRepository.save(update);
 
-        kafkaTemplate.send("delivery-updates",
-                new DeliveryUpdateEvent(orderId, courierName, status, order.getCourierUserId()));
+        try {
+            kafkaTemplate.send("delivery-updates",
+                    new DeliveryUpdateEvent(orderId, courierName, status, order.getCourierUserId()));
+        } catch (Exception e) {
+            log.error("Order {} status was recorded as {} but publishing the delivery update failed",
+                    orderId, status, e);
+        }
     }
 
     /**

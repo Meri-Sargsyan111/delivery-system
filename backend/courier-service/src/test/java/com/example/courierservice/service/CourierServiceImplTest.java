@@ -104,7 +104,7 @@ class CourierServiceImplTest {
 
         courierService.startDelivery(10L);
 
-        verify(locationSimulatorService).startTracking(10L);
+        verify(locationSimulatorService).startTracking(10L, 5L, COURIER_USER_ID);
     }
 
     @Test
@@ -114,7 +114,7 @@ class CourierServiceImplTest {
         assertThatThrownBy(() -> courierService.startDelivery(10L))
                 .isInstanceOf(InvalidOrderStateException.class);
 
-        verify(locationSimulatorService, never()).startTracking(any());
+        verify(locationSimulatorService, never()).startTracking(any(), any(), any());
     }
 
     @Test

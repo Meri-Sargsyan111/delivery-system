@@ -1,14 +1,18 @@
 package com.example.courierservice.service;
 
+import com.example.courierservice.client.AuthServiceClient;
+import com.example.courierservice.client.OrderServiceClient;
 import com.example.courierservice.courier.CourierStatus;
 import com.example.courierservice.dto.AssignmentResponse;
 import com.example.courierservice.dto.CourierResponse;
 import com.example.courierservice.dto.CreateCourierRequest;
+import com.example.courierservice.dto.RemoteOrderView;
 import com.example.courierservice.entity.Courier;
 import com.example.courierservice.entity.CourierAssignment;
 import com.example.courierservice.event.DeliveryUpdateEvent;
 import com.example.courierservice.exception.CourierNotAvailableException;
 import com.example.courierservice.exception.EntityNotFoundException;
+import com.example.courierservice.exception.InvalidOrderStateException;
 import com.example.courierservice.repository.CourierAssignmentRepository;
 import com.example.courierservice.repository.CourierRatingRepository;
 import com.example.courierservice.repository.CourierRepository;
@@ -30,9 +34,11 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -42,6 +48,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -61,6 +68,9 @@ class CourierAssignmentServiceImplTest {
     @Mock private KafkaTemplate<String, DeliveryUpdateEvent> kafkaTemplate;
     @Mock private CurrentUser currentUser;
     @Mock private AvatarStorageService avatarStorageService;
+    @Mock private OrderServiceClient orderServiceClient;
+    @Mock private AuthServiceClient authServiceClient;
+    @Mock private TaskScheduler taskScheduler;
 
     @InjectMocks private CourierAssignmentServiceImpl courierAssignmentService;
 
@@ -136,6 +146,155 @@ class CourierAssignmentServiceImplTest {
                 .isInstanceOf(EntityNotFoundException.class);
 
         verify(courierAssignmentRepository, never()).save(any());
+    }
+
+    @Test
+    void reserveCourier_schedulesAnOfferTimeoutCheck() {
+        Courier courier = new Courier(5L, "Alice Johnson", CourierStatus.AVAILABLE, null, COURIER_USER_ID);
+        when(courierRepository.findById(5L)).thenReturn(Optional.of(courier));
+
+        courierAssignmentService.reserveCourier(5L, 10L);
+
+        verify(taskScheduler).schedule(any(Runnable.class), any(Instant.class));
+    }
+
+    @Test
+    void rejectAssignment_byOwningCourier_releasesCourierUnassignsOrderAndPublishesRejected() {
+        asCourier(COURIER_USER_ID);
+        Courier courier = new Courier(5L, "Alice Johnson", CourierStatus.BUSY, null, COURIER_USER_ID);
+        CourierAssignment assignment = new CourierAssignment(1L, 10L, 5L, LocalDateTime.now());
+        when(courierRepository.findByUserId(COURIER_USER_ID)).thenReturn(Optional.of(courier));
+        when(courierAssignmentRepository.findByOrderId(10L)).thenReturn(Optional.of(assignment));
+        when(orderServiceClient.getOrder(10L)).thenReturn(new RemoteOrderView(10L, "ASSIGNED", null, COURIER_USER_ID));
+
+        courierAssignmentService.rejectAssignment(10L);
+
+        assertThat(courier.getStatus()).isEqualTo(CourierStatus.AVAILABLE);
+        verify(courierRepository).save(courier);
+        verify(orderServiceClient).unassignOrder(10L, 5L);
+        verify(courierAssignmentRepository).delete(assignment);
+
+        ArgumentCaptor<DeliveryUpdateEvent> eventCaptor = ArgumentCaptor.forClass(DeliveryUpdateEvent.class);
+        verify(kafkaTemplate).send(eq("delivery-updates"), eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getStatus()).isEqualTo("REJECTED");
+    }
+
+    @Test
+    void rejectAssignment_byNonOwningCourier_throwsAccessDeniedAndDoesNotMutateAnything() {
+        asCourier(OTHER_COURIER_USER_ID);
+        Courier otherCourier = new Courier(6L, "Bob Martins", CourierStatus.AVAILABLE, null, OTHER_COURIER_USER_ID);
+        CourierAssignment assignment = new CourierAssignment(1L, 10L, 5L, LocalDateTime.now());
+        when(courierRepository.findByUserId(OTHER_COURIER_USER_ID)).thenReturn(Optional.of(otherCourier));
+        when(courierAssignmentRepository.findByOrderId(10L)).thenReturn(Optional.of(assignment));
+
+        assertThatThrownBy(() -> courierAssignmentService.rejectAssignment(10L))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verify(orderServiceClient, never()).unassignOrder(any(), any());
+        verify(courierAssignmentRepository, never()).delete(any());
+        verify(kafkaTemplate, never()).send(any(), any());
+    }
+
+    @Test
+    void rejectAssignment_whenOrderAlreadyMovedPastAssigned_throwsAndDoesNotCorruptCourierState() {
+        asCourier(COURIER_USER_ID);
+        Courier courier = new Courier(5L, "Alice Johnson", CourierStatus.BUSY, null, COURIER_USER_ID);
+        CourierAssignment assignment = new CourierAssignment(1L, 10L, 5L, LocalDateTime.now());
+        when(courierRepository.findByUserId(COURIER_USER_ID)).thenReturn(Optional.of(courier));
+        when(courierAssignmentRepository.findByOrderId(10L)).thenReturn(Optional.of(assignment));
+        when(orderServiceClient.getOrder(10L)).thenReturn(new RemoteOrderView(10L, "IN_PROGRESS", null, COURIER_USER_ID));
+
+        assertThatThrownBy(() -> courierAssignmentService.rejectAssignment(10L))
+                .isInstanceOf(InvalidOrderStateException.class);
+
+        assertThat(courier.getStatus()).isEqualTo(CourierStatus.BUSY);
+        verify(courierRepository, never()).save(any());
+        verify(orderServiceClient, never()).unassignOrder(any(), any());
+        verify(courierAssignmentRepository, never()).delete(any());
+    }
+
+    @Test
+    void rejectAssignment_whenNoAssignmentExists_throwsEntityNotFoundException() {
+        asCourier(COURIER_USER_ID);
+        Courier courier = new Courier(5L, "Alice Johnson", CourierStatus.AVAILABLE, null, COURIER_USER_ID);
+        when(courierRepository.findByUserId(COURIER_USER_ID)).thenReturn(Optional.of(courier));
+        when(courierAssignmentRepository.findByOrderId(10L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> courierAssignmentService.rejectAssignment(10L))
+                .isInstanceOf(EntityNotFoundException.class);
+    }
+
+    /**
+     * Captures the Runnable reserveCourier() hands to the TaskScheduler and invokes it
+     * directly, to exercise the offer-timeout check's own logic without a real delay.
+     * Clears mock invocations recorded by this setup call itself (reserveCourier's own
+     * BUSY save + ASSIGNED publish) so later assertions only see what the timeout check
+     * itself did.
+     */
+    private Runnable captureScheduledOfferTimeout(Long courierId, Long orderId) {
+        Courier courier = new Courier(courierId, "Alice Johnson", CourierStatus.AVAILABLE, null, COURIER_USER_ID);
+        when(courierRepository.findById(courierId)).thenReturn(Optional.of(courier));
+
+        courierAssignmentService.reserveCourier(courierId, orderId);
+
+        ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(taskScheduler).schedule(runnableCaptor.capture(), any(Instant.class));
+        Runnable timeoutCheck = runnableCaptor.getValue();
+
+        clearInvocations(courierRepository, courierAssignmentRepository, kafkaTemplate, orderServiceClient);
+        return timeoutCheck;
+    }
+
+    @Test
+    void offerTimeout_whenStillAssignedAndUnanswered_releasesCourierAndUnassignsOrder() {
+        Runnable timeoutCheck = captureScheduledOfferTimeout(5L, 10L);
+
+        Courier courier = new Courier(5L, "Alice Johnson", CourierStatus.BUSY, null, COURIER_USER_ID);
+        CourierAssignment assignment = new CourierAssignment(1L, 10L, 5L, LocalDateTime.now());
+        when(courierAssignmentRepository.findByOrderId(10L)).thenReturn(Optional.of(assignment));
+        when(courierRepository.findById(5L)).thenReturn(Optional.of(courier));
+        when(orderServiceClient.getOrder(10L)).thenReturn(new RemoteOrderView(10L, "ASSIGNED", null, COURIER_USER_ID));
+
+        timeoutCheck.run();
+
+        assertThat(courier.getStatus()).isEqualTo(CourierStatus.AVAILABLE);
+        verify(orderServiceClient).unassignOrder(10L, 5L);
+        verify(courierAssignmentRepository).delete(assignment);
+
+        ArgumentCaptor<DeliveryUpdateEvent> eventCaptor = ArgumentCaptor.forClass(DeliveryUpdateEvent.class);
+        verify(kafkaTemplate).send(eq("delivery-updates"), eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getStatus()).isEqualTo("OFFER_EXPIRED");
+    }
+
+    @Test
+    void offerTimeout_whenCourierAlreadyAcceptedAndOrderInProgress_doesNotTouchCourierOrAssignment() {
+        Runnable timeoutCheck = captureScheduledOfferTimeout(5L, 10L);
+
+        Courier courier = new Courier(5L, "Alice Johnson", CourierStatus.BUSY, null, COURIER_USER_ID);
+        CourierAssignment assignment = new CourierAssignment(1L, 10L, 5L, LocalDateTime.now());
+        when(courierAssignmentRepository.findByOrderId(10L)).thenReturn(Optional.of(assignment));
+        when(courierRepository.findById(5L)).thenReturn(Optional.of(courier));
+        when(orderServiceClient.getOrder(10L)).thenReturn(new RemoteOrderView(10L, "IN_PROGRESS", null, COURIER_USER_ID));
+
+        timeoutCheck.run();
+
+        assertThat(courier.getStatus()).isEqualTo(CourierStatus.BUSY);
+        verify(courierRepository, never()).save(any());
+        verify(orderServiceClient, never()).unassignOrder(any(), any());
+        verify(courierAssignmentRepository, never()).delete(any());
+        verify(kafkaTemplate, never()).send(any(), any());
+    }
+
+    @Test
+    void offerTimeout_whenAssignmentAlreadyGone_isNoOp() {
+        Runnable timeoutCheck = captureScheduledOfferTimeout(5L, 10L);
+
+        when(courierAssignmentRepository.findByOrderId(10L)).thenReturn(Optional.empty());
+
+        timeoutCheck.run();
+
+        verify(orderServiceClient, never()).unassignOrder(any(), any());
+        verify(kafkaTemplate, never()).send(any(), any());
     }
 
     @Test
