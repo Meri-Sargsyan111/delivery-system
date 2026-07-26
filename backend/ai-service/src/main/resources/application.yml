@@ -1,0 +1,44 @@
+spring:
+  application:
+    name: ai-service
+  jackson:
+    mapper:
+      # Tolerates the model returning e.g. "car" instead of "CAR" for recommendedVehicle.
+      accept-case-insensitive-enums: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${AUTH_SERVICE_URL:http://localhost:8085}/auth/.well-known/jwks.json
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/aidb}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+server:
+  port: 8087
+
+# Shared RestTemplate timeout for OllamaClient/GeocodingClient/RoutingClient - a hung
+# local Ollama instance or a slow public geocoding/routing response must not block a
+# request thread indefinitely.
+http-client:
+  connect-timeout-ms: ${AI_HTTP_CONNECT_TIMEOUT_MS:5000}
+  read-timeout-ms: ${AI_HTTP_READ_TIMEOUT_MS:30000}
+
+# Local Ollama instance - no API key needed.
+ollama:
+  base-url: ${OLLAMA_BASE_URL:http://localhost:11434/api/generate}
+  model: ${OLLAMA_MODEL:llama3.2:1b}
+
+# Real routing/geocoding for delivery estimates (see GeocodingClient/RoutingClient).
+# OpenRouteService was preferred, but its geocoding/directions APIs both require an API
+# key this project doesn't have configured - Nominatim + OSRM are the free, keyless
+# equivalents, hence the defaults below. Swap these (and add an API key header if
+# needed) to move to OpenRouteService later without touching any calling code.
+routing:
+  geocoding-base-url: ${GEOCODING_BASE_URL:https://nominatim.openstreetmap.org/search}
+  routing-base-url: ${ROUTING_BASE_URL:https://router.project-osrm.org/route/v1/driving}
