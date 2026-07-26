@@ -1,0 +1,81 @@
+spring:
+  application:
+    name: payment-service
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${AUTH_SERVICE_URL:http://localhost:8085}/auth/.well-known/jwks.json
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/paymentdb}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKER:localhost:9092}
+    consumer:
+      group-id: payment-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        # Same rationale as every other producer in this codebase: bound how long a
+        # Kafka outage can block a request thread publishing a payment lifecycle event.
+        max.block.ms: 5000
+
+server:
+  port: 8088
+
+http-client:
+  connect-timeout-ms: ${PAYMENT_HTTP_CONNECT_TIMEOUT_MS:5000}
+  read-timeout-ms: ${PAYMENT_HTTP_READ_TIMEOUT_MS:8000}
+
+services:
+  order-service:
+    base-url: ${ORDER_SERVICE_URL:http://localhost:8081}
+  ai-service:
+    base-url: ${AI_SERVICE_URL:http://localhost:8087}
+
+# Presented as X-Internal-Token when calling order-service's unauthenticated
+# POST /orders/internal/from-payment endpoint - see OrderServiceClient and
+# order-service's InternalServiceTokenFilter. Must match order-service's own
+# internal.service-token value (same shared secret already used for the
+# order-service -> courier-service reserve call).
+internal:
+  service-token: ${INTERNAL_SERVICE_TOKEN:dev-internal-service-token-change-me}
+
+payment:
+  # Reconciliation sweep for payments stuck SUCCEEDED with no order yet created (see
+  # service.impl.OrderCreationReconciliationJob) - the backstop for payment-service
+  # crashing mid-flow, not just a retry-on-timeout mechanism.
+  order-creation:
+    inline-retry-attempts: 3
+    inline-retry-backoff-ms: 300
+    sweep-fixed-delay-ms: ${PAYMENT_SWEEP_INTERVAL_MS:60000}
+    max-attempts-before-manual-review: 20
+  estimate:
+    claim-timeout-ms: ${ESTIMATE_CLAIM_TIMEOUT_MS:5000}
+  providers:
+    stripe:
+      enabled: ${STRIPE_ENABLED:true}
+      # Test/sandbox keys only - see this project's final report for why Stripe doesn't
+      # really support Armenia/AMD in real production and what swapping providers later
+      # would take. Never hardcode a real key here - always via env var / Docker secret.
+      secret-key: ${STRIPE_SECRET_KEY:}
+      publishable-key: ${STRIPE_PUBLISHABLE_KEY:}
+      webhook-secret: ${STRIPE_WEBHOOK_SECRET:}
+      currency: ${PAYMENT_CURRENCY:amd}
+    rocket-line:
+      # Disabled by default - full adapter/interface wiring exists (see
+      # provider.rocketline.RocketLinePaymentProviderAdapter) but no real API docs have
+      # been supplied yet, so every call throws PaymentProviderNotConfiguredException
+      # until real base-url/api-key/webhook-secret are provided.
+      enabled: ${ROCKET_LINE_ENABLED:false}
+      base-url: ${ROCKET_LINE_BASE_URL:}
+      api-key: ${ROCKET_LINE_API_KEY:}
+      webhook-secret: ${ROCKET_LINE_WEBHOOK_SECRET:}
