@@ -9,13 +9,19 @@ import com.example.courierservice.util.GeoMath;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
 import java.util.function.LongSupplier;
 
 /**
@@ -36,8 +42,24 @@ public class LocationSimulatorServiceImpl implements LocationSimulatorService {
     /** Safety valve: a missed stopTracking (e.g. a lost CANCELLED event) must not loop forever. */
     private static final long MAX_SIMULATION_AGE_MS = 2 * 60 * 60 * 1000;
 
+    /**
+     * tracking-service's route endpoint can be transiently slow on a cold cache miss -
+     * it may itself need to geocode both addresses and call OSRM live, each with their
+     * own retry/backoff (see tracking-service's GeocodingClient/RoutingClient), which
+     * can legitimately exceed this service's own read-timeout to tracking-service. A
+     * single failed attempt must not permanently disable live tracking for the order's
+     * entire lifetime - retries are scheduled off the request thread (via the same
+     * TaskScheduler CourierAssignmentServiceImpl already uses for offer-timeouts) so
+     * startDelivery's own HTTP response is never delayed by this at all. By the second
+     * attempt tracking-service has almost always finished computing the route in the
+     * background from the first (client-abandoned) request and served it from cache.
+     */
+    private static final int MAX_ROUTE_FETCH_ATTEMPTS = 4;
+    private static final long ROUTE_FETCH_RETRY_DELAY_MS = 3000;
+
     private final LocationService locationService;
     private final TrackingServiceClient trackingServiceClient;
+    private final TaskScheduler taskScheduler;
 
     @Value("${courier.simulation.speed-kmh:40}")
     private double speedKmh;
@@ -47,6 +69,7 @@ public class LocationSimulatorServiceImpl implements LocationSimulatorService {
     }
 
     private final Map<Long, SimulationState> simulations = new ConcurrentHashMap<>();
+    private final Map<Long, ScheduledFuture<?>> pendingRouteFetchRetries = new ConcurrentHashMap<>();
 
     /** Overridable in tests so elapsed-time-based movement is deterministic, not wall-clock-flaky. */
     private LongSupplier clockMillis = System::currentTimeMillis;
@@ -64,9 +87,26 @@ public class LocationSimulatorServiceImpl implements LocationSimulatorService {
 
     @Override
     public void startTracking(Long orderId, Long courierId, UUID courierUserId) {
-        RouteView route = trackingServiceClient.getRoute(orderId);
+        String bearerToken = currentBearerToken();
+        attemptStartTracking(orderId, courierId, courierUserId, bearerToken, 1);
+    }
+
+    private void attemptStartTracking(Long orderId, Long courierId, UUID courierUserId, String bearerToken, int attempt) {
+        pendingRouteFetchRetries.remove(orderId);
+
+        RouteView route = trackingServiceClient.getRoute(orderId, bearerToken);
         if (route == null || route.geometry() == null || route.geometry().size() < 2) {
-            log.warn("Could not start live tracking for orderId={}: no route available from tracking-service", orderId);
+            if (attempt >= MAX_ROUTE_FETCH_ATTEMPTS) {
+                log.warn("Could not start live tracking for orderId={} after {} attempts: no route available from tracking-service",
+                        orderId, attempt);
+                return;
+            }
+            log.info("Route not yet available for orderId={} (attempt {}/{}) - retrying in {}ms",
+                    orderId, attempt, MAX_ROUTE_FETCH_ATTEMPTS, ROUTE_FETCH_RETRY_DELAY_MS);
+            ScheduledFuture<?> future = taskScheduler.schedule(
+                    () -> attemptStartTracking(orderId, courierId, courierUserId, bearerToken, attempt + 1),
+                    Instant.now().plusMillis(ROUTE_FETCH_RETRY_DELAY_MS));
+            pendingRouteFetchRetries.put(orderId, future);
             return;
         }
 
@@ -83,12 +123,25 @@ public class LocationSimulatorServiceImpl implements LocationSimulatorService {
         double totalDistanceKm = cumulative[cumulative.length - 1];
 
         simulations.put(orderId, new SimulationState(polyline, cumulative, totalDistanceKm, clockMillis.getAsLong()));
-        log.info("Live tracking started for orderId={}, courierId={}, routeDistanceKm={}",
-                orderId, courierId, totalDistanceKm);
+        log.info("Live tracking started for orderId={}, courierId={}, routeDistanceKm={} (attempt {}/{})",
+                orderId, courierId, totalDistanceKm, attempt, MAX_ROUTE_FETCH_ATTEMPTS);
+    }
+
+    private String currentBearerToken() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
+            return jwt.getTokenValue();
+        }
+        return null;
     }
 
     @Override
     public void stopTracking(Long orderId) {
+        ScheduledFuture<?> pendingRetry = pendingRouteFetchRetries.remove(orderId);
+        if (pendingRetry != null) {
+            pendingRetry.cancel(false);
+            log.info("Cancelled pending route-fetch retry for orderId={}", orderId);
+        }
         if (simulations.remove(orderId) != null) {
             log.info("Live tracking stopped for orderId={}", orderId);
         }

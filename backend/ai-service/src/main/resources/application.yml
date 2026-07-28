@@ -33,6 +33,11 @@ http-client:
 ollama:
   base-url: ${OLLAMA_BASE_URL:http://localhost:11434/api/generate}
   model: ${OLLAMA_MODEL:llama3.2:1b}
+  # Deliberately shorter than api-gateway's spring.cloud.gateway.httpclient.response-timeout
+  # (15s, see api-gateway's application.yml) so OllamaClient always fails fast enough to
+  # return its own graceful 503 before the gateway's own timeout silently drops the
+  # connection first and returns an uninformative 504. See RestTemplateConfig.
+  read-timeout-ms: ${OLLAMA_READ_TIMEOUT_MS:11000}
 
 # Real routing/geocoding for delivery estimates (see GeocodingClient/RoutingClient).
 # OpenRouteService was preferred, but its geocoding/directions APIs both require an API

@@ -10,18 +10,28 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+import org.springframework.scheduling.TaskScheduler;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class LocationSimulatorServiceImplTest {
 
     private static final Long COURIER_ID = 5L;
@@ -40,13 +50,19 @@ class LocationSimulatorServiceImplTest {
 
     @Mock private LocationService locationService;
     @Mock private TrackingServiceClient trackingServiceClient;
+    @Mock private TaskScheduler taskScheduler;
 
     private LocationSimulatorServiceImpl locationSimulatorService;
     private final AtomicLong clock = new AtomicLong(1_000_000L);
 
     @BeforeEach
     void setUp() {
-        locationSimulatorService = new LocationSimulatorServiceImpl(locationService, trackingServiceClient);
+        // Default: any scheduled retry "succeeds" in being scheduled (returns a real,
+        // inert ScheduledFuture) but is never actually invoked unless a test captures
+        // and fires the Runnable itself - tests don't wait on real wall-clock delays.
+        doReturn(mock(ScheduledFuture.class)).when(taskScheduler).schedule(any(Runnable.class), any(Instant.class));
+
+        locationSimulatorService = new LocationSimulatorServiceImpl(locationService, trackingServiceClient, taskScheduler);
         locationSimulatorService.setClockMillis(clock::get);
         locationSimulatorService.setSpeedKmh(36.0);
     }
@@ -59,18 +75,38 @@ class LocationSimulatorServiceImplTest {
     }
 
     @Test
-    void startTracking_whenRouteUnavailable_doesNotStartSimulation() {
-        when(trackingServiceClient.getRoute(2L)).thenReturn(null);
+    void startTracking_whenRouteUnavailable_schedulesARetryInsteadOfGivingUpImmediately() {
+        when(trackingServiceClient.getRoute(eq(2L), any())).thenReturn(null);
 
         locationSimulatorService.startTracking(2L, COURIER_ID, COURIER_USER_ID);
         locationSimulatorService.simulateMovement();
 
         verifyNoInteractions(locationService);
+        verify(taskScheduler).schedule(any(Runnable.class), any(Instant.class));
+    }
+
+    @Test
+    void startTracking_whenRouteUnavailableOnFirstAttemptButAvailableOnRetry_eventuallyStartsSimulation() {
+        when(trackingServiceClient.getRoute(eq(2L), any()))
+                .thenReturn(null)
+                .thenReturn(STRAIGHT_ROUTE);
+
+        ArgumentCaptor<Runnable> retryCaptor = ArgumentCaptor.forClass(Runnable.class);
+        doReturn(mock(ScheduledFuture.class)).when(taskScheduler).schedule(retryCaptor.capture(), any(Instant.class));
+
+        locationSimulatorService.startTracking(2L, COURIER_ID, COURIER_USER_ID);
+        retryCaptor.getValue().run();
+
+        locationSimulatorService.simulateMovement();
+
+        ArgumentCaptor<CourierLocation> captor = ArgumentCaptor.forClass(CourierLocation.class);
+        verify(locationService).sendLocation(captor.capture());
+        assertThat(captor.getValue().getOrderId()).isEqualTo(2L);
     }
 
     @Test
     void simulateMovement_afterStartTracking_publishesLocationForThatRealOrderId() {
-        when(trackingServiceClient.getRoute(2L)).thenReturn(STRAIGHT_ROUTE);
+        when(trackingServiceClient.getRoute(eq(2L), any())).thenReturn(STRAIGHT_ROUTE);
 
         locationSimulatorService.startTracking(2L, COURIER_ID, COURIER_USER_ID);
         locationSimulatorService.simulateMovement();
@@ -82,7 +118,7 @@ class LocationSimulatorServiceImplTest {
 
     @Test
     void simulateMovement_asTimeAdvances_movesFartherAlongTheRoute() {
-        when(trackingServiceClient.getRoute(2L)).thenReturn(STRAIGHT_ROUTE);
+        when(trackingServiceClient.getRoute(eq(2L), any())).thenReturn(STRAIGHT_ROUTE);
 
         locationSimulatorService.startTracking(2L, COURIER_ID, COURIER_USER_ID);
 
@@ -101,7 +137,7 @@ class LocationSimulatorServiceImplTest {
 
     @Test
     void simulateMovement_pastRouteEnd_clampsToFinalPoint() {
-        when(trackingServiceClient.getRoute(2L)).thenReturn(STRAIGHT_ROUTE);
+        when(trackingServiceClient.getRoute(eq(2L), any())).thenReturn(STRAIGHT_ROUTE);
 
         locationSimulatorService.startTracking(2L, COURIER_ID, COURIER_USER_ID);
         clock.addAndGet(60 * 60_000L);
@@ -115,7 +151,7 @@ class LocationSimulatorServiceImplTest {
 
     @Test
     void stopTracking_matchingActiveOrder_stopsFurtherPublishing() {
-        when(trackingServiceClient.getRoute(2L)).thenReturn(STRAIGHT_ROUTE);
+        when(trackingServiceClient.getRoute(eq(2L), any())).thenReturn(STRAIGHT_ROUTE);
 
         locationSimulatorService.startTracking(2L, COURIER_ID, COURIER_USER_ID);
         locationSimulatorService.stopTracking(2L);
@@ -126,8 +162,20 @@ class LocationSimulatorServiceImplTest {
     }
 
     @Test
+    void stopTracking_cancelsAnyPendingRouteFetchRetry() {
+        when(trackingServiceClient.getRoute(eq(2L), any())).thenReturn(null);
+        ScheduledFuture<?> future = mock(ScheduledFuture.class);
+        doReturn(future).when(taskScheduler).schedule(any(Runnable.class), any(Instant.class));
+
+        locationSimulatorService.startTracking(2L, COURIER_ID, COURIER_USER_ID);
+        locationSimulatorService.stopTracking(2L);
+
+        verify(future).cancel(false);
+    }
+
+    @Test
     void stopTracking_withDifferentOrderId_doesNotAffectOtherTrackedOrder() {
-        when(trackingServiceClient.getRoute(2L)).thenReturn(STRAIGHT_ROUTE);
+        when(trackingServiceClient.getRoute(eq(2L), any())).thenReturn(STRAIGHT_ROUTE);
 
         locationSimulatorService.startTracking(2L, COURIER_ID, COURIER_USER_ID);
         locationSimulatorService.stopTracking(999L);
@@ -141,8 +189,8 @@ class LocationSimulatorServiceImplTest {
 
     @Test
     void simulateMovement_withTwoConcurrentOrders_advancesBothIndependently() {
-        when(trackingServiceClient.getRoute(1L)).thenReturn(STRAIGHT_ROUTE);
-        when(trackingServiceClient.getRoute(2L)).thenReturn(STRAIGHT_ROUTE);
+        when(trackingServiceClient.getRoute(eq(1L), any())).thenReturn(STRAIGHT_ROUTE);
+        when(trackingServiceClient.getRoute(eq(2L), any())).thenReturn(STRAIGHT_ROUTE);
 
         locationSimulatorService.startTracking(1L, COURIER_ID, COURIER_USER_ID);
         clock.addAndGet(60_000);

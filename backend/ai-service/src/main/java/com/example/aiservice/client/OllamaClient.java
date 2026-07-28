@@ -4,6 +4,7 @@ import com.example.aiservice.client.dto.OllamaGenerateRequest;
 import com.example.aiservice.client.dto.OllamaGenerateResponse;
 import com.example.aiservice.exception.AiServiceException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -15,7 +16,10 @@ import org.springframework.util.StringUtils;
 /**
  * Synchronous call to a local Ollama instance's /api/generate endpoint. No API key is
  * involved - Ollama runs locally and is reached over plain HTTP (see application.yml's
- * ollama.base-url).
+ * ollama.base-url). Uses the dedicated "ollamaRestTemplate" bean (see
+ * RestTemplateConfig), not the general-purpose one - its read timeout is deliberately
+ * shorter than api-gateway's response-timeout so a slow/stuck Ollama call fails here,
+ * gracefully, before the gateway gives up first and returns a bare, uninformative 504.
  */
 @Slf4j
 @Component
@@ -25,7 +29,7 @@ public class OllamaClient {
     private final String baseUrl;
     private final String model;
 
-    public OllamaClient(RestTemplate restTemplate,
+    public OllamaClient(@Qualifier("ollamaRestTemplate") RestTemplate restTemplate,
                          @Value("${ollama.base-url}") String baseUrl,
                          @Value("${ollama.model}") String model) {
         this.restTemplate = restTemplate;
